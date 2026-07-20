@@ -15,15 +15,17 @@ const VIEWS = [
   ["passenger", "Passenger", "03"],
   ["rearLeft", "Rear · left", "04"],
   ["rearRight", "Rear · right", "05"],
-  ["exterior", "Walk around", "06"],
-  ["overhead", "Overhead", "07"],
+  ["starlight", "Starlight", "06"],
+  ["exterior", "Walk around", "07"],
+  ["overhead", "Overhead", "08"],
 ];
 
 const STAR_MODES = [
   ["classic", "Classic"],
   ["galaxy", "Galaxy"],
-  ["aurora", "Aurora"],
   ["milkyway", "Milky Way"],
+  ["aurora", "Aurora"],
+  ["comet", "Comet"],
 ];
 
 const MOOD_LIST = [
@@ -61,7 +63,7 @@ export default function CabinHUD({ showroomApi, onExit }) {
   const [metal, setMetal] = useState("chrome");
   const [ambient, setAmbient] = useState("champagne");
   const [mood, setMood] = useState("moonlight");
-  const [stars, setStars] = useState({ density: 260, brightness: 1.15, speed: 1.0, mode: "classic" });
+  const [stars, setStars] = useState({ density: 420, brightness: 1.25, speed: 1.0, mode: "classic" });
   const [engine, setEngine] = useState(false);
   const [rain, setRain] = useState(false);
   const [privacy, setPrivacy] = useState(false);
@@ -106,6 +108,18 @@ export default function CabinHUD({ showroomApi, onExit }) {
   const go = (id) => {
     setView(id);
     cabin()?.viewpoint(id);
+    // entering the Starlight view opens the sky controls and pours on the stars
+    if (id === "starlight") {
+      setTab("sky");
+      setPanelOpen(true);
+      const boosted = {
+        ...stars,
+        density: Math.max(stars.density, 620),
+        brightness: Math.max(stars.brightness, 1.45),
+      };
+      setStars(boosted);
+      cabin()?.regenStars(boosted);
+    }
   };
 
   const applyStars = (patch) => {
@@ -135,7 +149,7 @@ export default function CabinHUD({ showroomApi, onExit }) {
       <div className="cabin-top">
         <div className="cabin-title">
           <p className="kicker">Private commission · Goodwood</p>
-          <small>{found} details touched · drag to look · scroll to move</small>
+          <small>{found} details touched · drag to look · right-drag to move · scroll to zoom</small>
         </div>
         <div className="cabin-top-actions">
           <button

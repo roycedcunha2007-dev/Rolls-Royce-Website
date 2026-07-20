@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import gsap from "gsap";
+import { MeshSurfaceSampler } from "three/addons/math/MeshSurfaceSampler.js";
+import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import { CabinSFX } from "./CabinSFX.js";
 import { EngineAudio } from "../audio.js";
 
@@ -18,10 +20,17 @@ import { EngineAudio } from "../audio.js";
  */
 
 const STAR_MODES = {
-  classic: { colors: [[1.0, 0.97, 0.9]], aurora: 0 },
-  galaxy: { colors: [[0.72, 0.78, 1.0], [0.95, 0.85, 1.0], [1.0, 0.98, 0.92]], aurora: 0 },
+  classic: { colors: [[1.0, 0.98, 0.93]], aurora: 0 },
+  galaxy: {
+    colors: [[0.62, 0.72, 1.0], [0.84, 0.79, 1.0], [1.0, 0.97, 0.9], [0.72, 0.86, 1.0]],
+    aurora: 0, cluster: 1,
+  },
   aurora: { colors: [[0.6, 1.0, 0.82], [0.62, 0.86, 1.0]], aurora: 1 },
-  milkyway: { colors: [[0.85, 0.9, 1.0], [1.0, 0.96, 0.88]], aurora: 0, band: true },
+  milkyway: {
+    colors: [[0.8, 0.86, 1.0], [1.0, 0.95, 0.86], [0.9, 0.9, 1.0]],
+    aurora: 0, band: true,
+  },
+  comet: { colors: [[1.0, 0.98, 0.92]], aurora: 0, comet: 1 },
 };
 
 const AMBIENT_THEMES = [
@@ -161,6 +170,15 @@ export class CabinExperience {
         look: this.W(0.16, 0.55, 0.54),
         after: { mode: "pov" },
       },
+      starlight: {
+        label: "Starlight",
+        // reclined in the rear, gaze up the curve of the canopy
+        pos: this.W(0.82, 0.52, 0.5),
+        look: this.W(0.42, 1.5, 0.5),
+        // orbit beneath the canopy so the whole sky can be explored
+        after: { mode: "orbit", target: this.W(0.44, 1.42, 0.5), minR: 0.7, maxR: 2.9, minPhi: 1.42, maxPhi: 2.95 },
+        starlight: true,
+      },
       exterior: {
         label: "Walk around",
         pos: this.center.clone().add(new THREE.Vector3(4.4, 1.35, 3.6)),
@@ -180,9 +198,42 @@ export class CabinExperience {
     const v = this.viewpoints[id];
     if (!v) return;
     this.focused = null;
+    const prev = this.currentView;
     this.currentView = id;
+    // theatre-darken the roof when admiring the sky, restore when leaving it
+    if (v.starlight) this.enterStarlight();
+    else if (this.viewpoints[prev]?.starlight) this.exitStarlight();
     this.showroom.flyTo(v.pos, v.look, v.after, 1.9);
     this.sfx.slide();
+  }
+
+  /* Dim the cabin and take the headliner to near-black so the fibre-optic
+     stars blaze exactly as they do in the real motor car at night. */
+  enterStarlight() {
+    if (this._starlightOn) return;
+    this._starlightOn = true;
+    const R = this.entry.regions || {};
+    this._headSaved = (R.headliner || []).map((m) => m.color.getHex());
+    this._moodBefore = this.mood;
+    for (const m of R.headliner || []) {
+      gsap.killTweensOf(m.color);
+      gsap.to(m.color, { r: 0.03, g: 0.035, b: 0.05, duration: 1.2, ease: "power2.inOut" });
+    }
+    this.setMood("midnight");
+    this.sfx.chime();
+  }
+
+  exitStarlight() {
+    if (!this._starlightOn) return;
+    this._starlightOn = false;
+    const R = this.entry.regions || {};
+    (R.headliner || []).forEach((m, i) => {
+      const hex = this._headSaved ? this._headSaved[i] : 0xe4ddcf;
+      const c = new THREE.Color(hex);
+      gsap.killTweensOf(m.color);
+      gsap.to(m.color, { r: c.r, g: c.g, b: c.b, duration: 1.0, ease: "power2.inOut" });
+    });
+    if (this._moodBefore && this._moodBefore !== "midnight") this.setMood(this._moodBefore);
   }
 
   /* -------------------------------------------- touch anything ---- */
@@ -413,17 +464,34 @@ export class CabinExperience {
     this.showroom.scene.add(this.glow);
   }
 
-  /* ------------------------------------------------ starlight ---- */
+  /* A fibre-optic star: a hard bright core, a soft halo, and a faint
+     four-point diffraction cross so the brighter tips sparkle like the
+     real Starlight Headliner rather than reading as fuzzy dots. */
   _starSprite() {
     const cv = document.createElement("canvas");
     cv.width = cv.height = 64;
     const g = cv.getContext("2d");
+    g.clearRect(0, 0, 64, 64);
     const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     grad.addColorStop(0, "rgba(255,255,255,1)");
-    grad.addColorStop(0.35, "rgba(255,255,255,0.8)");
+    grad.addColorStop(0.1, "rgba(255,255,255,0.95)");
+    grad.addColorStop(0.32, "rgba(255,255,255,0.35)");
+    grad.addColorStop(0.7, "rgba(255,255,255,0.06)");
     grad.addColorStop(1, "rgba(255,255,255,0)");
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
+
+    // diffraction cross
+    g.globalCompositeOperation = "lighter";
+    const spike = g.createLinearGradient(0, 32, 64, 32);
+    spike.addColorStop(0, "rgba(255,255,255,0)");
+    spike.addColorStop(0.5, "rgba(255,255,255,0.5)");
+    spike.addColorStop(1, "rgba(255,255,255,0)");
+    g.strokeStyle = spike;
+    g.lineWidth = 1.1;
+    g.beginPath(); g.moveTo(2, 32); g.lineTo(62, 32);
+    g.moveTo(32, 2); g.lineTo(32, 62); g.stroke();
+
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
@@ -434,7 +502,7 @@ export class CabinExperience {
     // animated on the CPU through the vertex-colour buffer (a few hundred
     // stars — negligible).
     this.starMat = new THREE.PointsMaterial({
-      size: 0.012,
+      size: 0.016,
       sizeAttenuation: true,
       map: this._starSprite(),
       vertexColors: true,
@@ -444,6 +512,49 @@ export class CabinExperience {
     });
     this.stars = null;
     this.regenStars();
+  }
+
+  /*
+   * Build a surface sampler from the actual headliner mesh so stars land
+   * exactly on the curved roof lining instead of a guessed flat plane.
+   *
+   * The sampler is built in the mesh's LOCAL space and the mesh's live world
+   * matrix is applied per-sample at regen time — this decouples the sampler
+   * from when it was built (world matrices may be stale during construction)
+   * and keeps the canopy glued to the roof however the cabin is transformed.
+   */
+  _buildRoofSampler() {
+    const meshes = (this.entry.headlinerMeshes || []).filter(
+      (m) => m.geometry && m.geometry.attributes.position
+    );
+    if (!meshes.length) return null;
+
+    // If several roof meshes exist, bake them into one under the first mesh's
+    // frame; the shared world matrix is then applied at sample time.
+    this._roofMesh = meshes[0];
+    let geo;
+    if (meshes.length === 1) {
+      geo = meshes[0].geometry;
+    } else {
+      const inv = new THREE.Matrix4();
+      meshes[0].updateWorldMatrix(true, false);
+      inv.copy(meshes[0].matrixWorld).invert();
+      const geos = [];
+      for (const m of meshes) {
+        m.updateWorldMatrix(true, false);
+        const src = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+        src.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", src.attributes.position.clone());
+        if (src.attributes.normal) g.setAttribute("normal", src.attributes.normal.clone());
+        geos.push(g);
+      }
+      geo = BufferGeometryUtils.mergeGeometries(geos, false) || geos[0];
+    }
+    if (!geo) return null;
+
+    this.roofSampler = new MeshSurfaceSampler(new THREE.Mesh(geo)).build();
+    return this.roofSampler;
   }
 
   regenStars(cfg = {}) {
@@ -461,21 +572,18 @@ export class CabinExperience {
     const col = new Float32Array(n * 3);
     this._starSeed = new Float32Array(n);
     this._starBase = new Float32Array(n * 3);
-    const cx = this.center.x, cz = this.center.z;
-    const roofY = this.box.min.y + this.size.y * 0.755;
+    this._starMag = new Float32Array(n);
 
-    for (let i = 0; i < n; i++) {
-      let fx = (Math.random() - 0.5);
-      let fz = (Math.random() - 0.5);
-      // Milky Way: concentrate a soft band along the cabin's length
-      if (def.band && Math.random() < 0.62) {
-        fz = (Math.random() - 0.5) * 0.35 + Math.sin(fx * 4.0) * 0.1;
-      }
-      // shifted rearward: the flat roof panel sits behind the windscreen header
-      pos[i * 3] = cx + (0.14 + fx * 0.27) * this.size.x;
-      pos[i * 3 + 1] = roofY + (Math.random() - 0.5) * 0.02;
-      pos[i * 3 + 2] = cz + fz * this.size.z * 0.58;
+    if (!this.roofSampler && !this._roofTried) {
+      this._roofTried = true;
+      this._buildRoofSampler();
+    }
+
+    const setColor = (i) => {
       this._starSeed[i] = Math.random() * 40;
+      // magnitude: a power curve gives many faint stars and a few brilliant
+      // ones — the natural distribution the real headliner has
+      this._starMag[i] = 0.32 + Math.pow(Math.random(), 2.4) * 1.25;
       const c = def.colors[(Math.random() * def.colors.length) | 0];
       this._starBase[i * 3] = c[0];
       this._starBase[i * 3 + 1] = c[1];
@@ -483,6 +591,61 @@ export class CabinExperience {
       col[i * 3] = c[0];
       col[i * 3 + 1] = c[1];
       col[i * 3 + 2] = c[2];
+    };
+
+    if (this.roofSampler && this._roofMesh) {
+      // work in world space using the mesh's live transform
+      this._roofMesh.updateWorldMatrix(true, false);
+      const world = this._roofMesh.matrixWorld;
+      const rb = new THREE.Box3().setFromObject(this._roofMesh);
+      const rangeY = Math.max(1e-4, rb.max.y - rb.min.y);
+      // Galaxy: a Gaussian cluster on the roof, so density swells at a centre
+      const clusterC = def.cluster ? this.W(0.34, 1.0, 0.42) : null;
+      const _p = new THREE.Vector3();
+      const _nrm = new THREE.Vector3();
+      const _cabin = new THREE.Vector3(this.center.x, rb.min.y - 0.5, this.center.z);
+      const _dir = new THREE.Vector3();
+      let i = 0, guard = 0;
+      while (i < n && guard < n * 60) {
+        guard++;
+        this.roofSampler.sample(_p, _nrm);
+        _p.applyMatrix4(world);
+        // only the upper roof shell (skip A-pillar / visor trim on the mesh)
+        const hy = (_p.y - rb.min.y) / rangeY;
+        if (hy < 0.62) continue;
+        // Milky Way: bias toward a longitudinal band
+        if (def.band && Math.abs(_p.z - this.center.z) > this.size.z * 0.2 && Math.random() < 0.72) continue;
+        // Galaxy: keep a sparse field but concentrate ~60% near the cluster
+        if (clusterC) {
+          const dx = _p.x - clusterC.x, dz = _p.z - clusterC.z;
+          const g = Math.exp(-(dx * dx + dz * dz) / (2 * 0.34 * 0.34));
+          if (Math.random() > 0.4 + 0.6 * g) continue;
+        }
+        // nudge a hair toward the cabin interior so each fibre tip sits on the
+        // visible face of the lining (never buried behind the opaque roof shell)
+        _dir.copy(_cabin).sub(_p).normalize();
+        const off = 0.01;
+        pos[i * 3] = _p.x + _dir.x * off;
+        pos[i * 3 + 1] = _p.y + _dir.y * off;
+        pos[i * 3 + 2] = _p.z + _dir.z * off;
+        setColor(i);
+        i++;
+      }
+      // if the mesh was too small to fill, top up the rest at the last point
+      for (; i < n; i++) { pos[i * 3] = pos[0]; pos[i * 3 + 1] = pos[1]; pos[i * 3 + 2] = pos[2]; setColor(i); }
+    } else {
+      // fallback: the previous flat-plane scatter
+      const cx = this.center.x, cz = this.center.z;
+      const roofY = this.box.min.y + this.size.y * 0.755;
+      for (let i = 0; i < n; i++) {
+        let fx = Math.random() - 0.5;
+        let fz = Math.random() - 0.5;
+        if (def.band && Math.random() < 0.62) fz = (Math.random() - 0.5) * 0.35 + Math.sin(fx * 4.0) * 0.1;
+        pos[i * 3] = cx + (0.14 + fx * 0.27) * this.size.x;
+        pos[i * 3 + 1] = roofY + (Math.random() - 0.5) * 0.02;
+        pos[i * 3 + 2] = cz + fz * this.size.z * 0.58;
+        setColor(i);
+      }
     }
 
     const geo = new THREE.BufferGeometry();
@@ -501,7 +664,13 @@ export class CabinExperience {
 
   /* One shooting star arcing across the headliner. */
   meteor() {
-    const roofY = this.box.min.y + this.size.y * 0.74;
+    // ride just under the real roof if we have it, else the old estimate
+    let roofY = this.box.min.y + this.size.y * 0.86;
+    if (this._roofMesh) {
+      this._roofMesh.updateWorldMatrix(true, false);
+      const rb = new THREE.Box3().setFromObject(this._roofMesh);
+      roofY = rb.min.y + (rb.max.y - rb.min.y) * 0.78;
+    }
     const z0 = this.center.z + (Math.random() - 0.5) * this.size.z * 0.5;
     const x0 = this.center.x - this.size.x * 0.2;
     const geo = new THREE.BufferGeometry().setFromPoints([
@@ -728,6 +897,8 @@ export class CabinExperience {
     this.setSeatClimate(null);
     this.engineStart(false);
     this.setRain(false);
+    this.exitStarlight();
+    this.currentView = null;
     this.sfx.setAmbience(false);
     this.setMood("showroom");
   }
@@ -770,15 +941,27 @@ export class CabinExperience {
       p.needsUpdate = true;
     }
 
+    // Comet mode: shooting stars streak across on their own
+    if (this.starCfg.mode === "comet" && this.showroom.cabinMode && this.stars && this.stars.visible) {
+      this._cometT = (this._cometT || 0) + dt;
+      if (this._cometT > (this._cometGap || 2.8)) {
+        this._cometT = 0;
+        this._cometGap = 1.8 + Math.random() * 2.6;
+        this.meteor();
+      }
+    }
+
     if (!this.stars || !this._starBase) return;
     const { brightness, speed } = this.starCfg;
     const colAttr = this.stars.geometry.attributes.color;
     const col = colAttr.array;
     const base = this._starBase;
     const seed = this._starSeed;
+    const mag = this._starMag;
     const n = seed.length;
     for (let i = 0; i < n; i++) {
-      const tw = (0.3 + 0.7 * Math.abs(Math.sin(t * speed * 1.4 + seed[i]))) * brightness;
+      const m = mag ? mag[i] : 1;
+      const tw = (0.25 + 0.75 * Math.abs(Math.sin(t * speed * 1.4 + seed[i]))) * brightness * m;
       let r = base[i * 3], g = base[i * 3 + 1], b = base[i * 3 + 2];
       if (this._starAurora) {
         const h = 0.5 + 0.5 * Math.sin(t * 0.35 + seed[i] * 2.1);

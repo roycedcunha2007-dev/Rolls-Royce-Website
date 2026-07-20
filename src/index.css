@@ -61,3 +61,5 @@ button { font:inherit; } .atelier-shell:after { content:""; pointer-events:none;
   .commission-dock{right:0; left:0; top:auto; bottom:132px; width:auto} .dock-body{max-height:44vh; padding:16px 18px 18px} .swatch-dot{width:46px}
   .cabin-toast{bottom:150px; font-size:9px; white-space:normal; max-width:80vw; text-align:center}
 }
+
+.canvas-grab { cursor:grab; } .canvas-grab.grabbing { cursor:grabbing; } .canvas-grab.panning { cursor:move; }

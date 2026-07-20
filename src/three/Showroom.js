@@ -539,6 +539,8 @@ export class Showroom {
         const mat = mk({ color: 0xe4ddcf, roughness: 0.92, metalness: 0, envMapIntensity: 0.1 });
         obj.material = mat;
         R.headliner.push(mat);
+        // the starlight is threaded into this exact surface, so keep the mesh
+        (entry.headlinerMeshes = entry.headlinerMeshes || []).push(obj);
       } else if (node.includes("seatbelt")) {
         const mat = mk({ color: 0x24406b, roughness: 0.75, metalness: 0.02 });
         obj.material = mat;
@@ -762,6 +764,27 @@ export class Showroom {
     }
   }
 
+  /* Right-drag truck/pedestal: slide the viewpoint across the camera's own
+     right and up axes, clamped so you stay in and around the cabin. This is
+     the "move your head" axis that turns look-around into true exploration. */
+  _panExplore(ex, dx, dy) {
+    if (!this._panR) { this._panR = new THREE.Vector3(); this._panU = new THREE.Vector3(); }
+    this._panR.setFromMatrixColumn(this.camera.matrixWorld, 0);
+    this._panU.setFromMatrixColumn(this.camera.matrixWorld, 1);
+    const scale = (ex.mode === "orbit" ? Math.max(ex.radius, 0.4) : 1) * 0.0016;
+    const p = ex.mode === "orbit" ? ex.target : ex.basePos;
+    // drag-right moves the world right (viewpoint left) — the grab-and-slide feel
+    p.addScaledVector(this._panR, -dx * scale);
+    p.addScaledVector(this._panU, dy * scale);
+    if (this.cabin && this.cabin.box) {
+      const b = this.cabin.box;
+      const m = (ex.mode === "orbit" && ex.radius > 2.2) ? 6 : 0.3;
+      p.x = THREE.MathUtils.clamp(p.x, b.min.x - m, b.max.x + m);
+      p.y = THREE.MathUtils.clamp(p.y, b.min.y - m, b.max.y + m);
+      p.z = THREE.MathUtils.clamp(p.z, b.min.z - m, b.max.z + m);
+    }
+  }
+
   _interaction() {
     this.mouse = { x: 0, y: 0 };
     this._onMove = (e) => {
@@ -783,11 +806,13 @@ export class Showroom {
       if (this.driveMode) return;
       dragging = true;
       this._dragging = true;
+      // right (or middle) button pans the viewpoint; left orbits / looks
+      this._panBtn = e.button === 2 || e.button === 1;
       lastX = e.clientX;
       lastY = e.clientY;
       downX = e.clientX;
       downY = e.clientY;
-      this.container.classList.add("grabbing");
+      this.container.classList.add(this._panBtn ? "panning" : "grabbing");
     };
     this._onDrag = (e) => {
       if (!dragging) return;
@@ -798,31 +823,40 @@ export class Showroom {
       if (this.cabinMode) {
         const ex = this.explore;
         if (!ex) return;
-        if (ex.mode === "orbit") {
+        if (this._panBtn) {
+          this._panExplore(ex, dx, dy);
+        } else if (ex.mode === "orbit") {
           ex.theta -= dx * 0.0052;
           ex.phi = THREE.MathUtils.clamp(ex.phi - dy * 0.0038, ex.minPhi, ex.maxPhi);
         } else {
           ex.yaw -= dx * 0.0034;
           ex.pitch = THREE.MathUtils.clamp(ex.pitch + dy * 0.0028, -0.85, 0.85);
         }
-      } else {
+      } else if (!this._panBtn) {
         this.targetTurn += dx * 0.004;
       }
     };
     this._onUp = (e) => {
       const wasDragging = dragging;
+      const wasPan = this._panBtn;
       dragging = false;
       this._dragging = false;
-      this.container.classList.remove("grabbing");
-      // a click (not a drag) inside the cabin touches whatever it lands on
+      this._panBtn = false;
+      this.container.classList.remove("grabbing", "panning");
+      // a click (not a drag, not a pan) inside the cabin touches what it lands on
       if (
-        wasDragging && this.cabinMode && this.cabin && e &&
+        wasDragging && !wasPan && this.cabinMode && this.cabin && e &&
         Math.hypot(e.clientX - downX, e.clientY - downY) < 7 &&
         !inUI(e)
       ) {
         this.cabin.handleTap(e.clientX, e.clientY);
       }
     };
+    // right-click pans instead of opening the browser menu inside the cabin
+    this._onContext = (e) => {
+      if (this.cabinMode && !inUI(e)) e.preventDefault();
+    };
+    window.addEventListener("contextmenu", this._onContext);
     this._onWheel = (e) => {
       if (!this.cabinMode || !this.explore) return;
       if (inUI(e)) return;
@@ -1190,6 +1224,7 @@ export class Showroom {
     window.removeEventListener("pointermove", this._onDrag);
     window.removeEventListener("pointerup", this._onUp);
     window.removeEventListener("wheel", this._onWheel);
+    window.removeEventListener("contextmenu", this._onContext);
     window.removeEventListener("keydown", this._onKeyDown);
     window.removeEventListener("keyup", this._onKeyUp);
     
