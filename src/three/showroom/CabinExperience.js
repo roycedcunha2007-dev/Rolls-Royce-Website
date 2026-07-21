@@ -329,7 +329,6 @@ export class CabinExperience {
       gsap.to(m, { emissiveIntensity: on ? 1.1 : 0.12, duration: 0.9, ease: "power2.inOut" });
     }
     if (on) {
-      this.indicate(2);
       // the fascia breathes awake — strips flare then settle
       for (const m of this.stripMats) {
         gsap.fromTo(m, { opacity: 0.25 }, { opacity: 0.9, duration: 1.6, ease: "power2.out" });
@@ -339,7 +338,6 @@ export class CabinExperience {
     this.v12.setEnabled(on && this.sfx.enabled);
     if (on) {
       this.v12.setMode("cabin");
-      this.sfx.thump();
     }
   }
 
