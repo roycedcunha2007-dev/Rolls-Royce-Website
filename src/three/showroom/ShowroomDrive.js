@@ -105,7 +105,7 @@ export class ShowroomDrive {
   _buildFloor() {
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(120, 72),
-      new THREE.MeshStandardMaterial({ color: 0x030407, roughness: 0.3, metalness: 0.0, envMapIntensity: 0.04 })
+      new THREE.MeshStandardMaterial({ color: 0x04050a, roughness: 0.82, metalness: 0.0, envMapIntensity: 0.05 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -287,7 +287,7 @@ export class ShowroomDrive {
     this.roadTex = this._roadTexture();
     const road = new THREE.Mesh(
       new THREE.PlaneGeometry(18, 460),
-      new THREE.MeshStandardMaterial({ color: 0x090b10, roughness: 0.24, metalness: 0.12, map: this.roadTex, envMapIntensity: 0.12 })
+      new THREE.MeshStandardMaterial({ color: 0x0a0c11, roughness: 0.88, metalness: 0.0, map: this.roadTex, envMapIntensity: 0.05 })
     );
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0.002, -200);

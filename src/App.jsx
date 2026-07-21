@@ -67,8 +67,17 @@ export default function App() {
   useEffect(() => { if (section === 3) setDoorsOpen(true); else setDoorsOpen(false); setBonnetOpen(section === 4); }, [section]);
   useEffect(() => { if (driveMode || cabinMode) lenisRef.current?.stop(); else lenisRef.current?.start(); }, [driveMode, cabinMode]);
   useEffect(() => { if (driveMode) { setDriveView("side"); setRidePhase("pavilion"); } }, [driveMode]);
-  const startRide = () => { showroomApi.current?.startRide(); setRidePhase("riding"); };
-  const stopRide = () => { showroomApi.current?.stopRide(); setRidePhase("pavilion"); };
+  const startRide = () => {
+    showroomApi.current?.startRide();
+    const c = showroomApi.current?.cabin;
+    if (c) { c.engineStart(true); c.v12?.setMode("drive"); }
+    setRidePhase("riding");
+  };
+  const stopRide = () => {
+    showroomApi.current?.stopRide();
+    showroomApi.current?.cabin?.engineStart(false);
+    setRidePhase("pavilion");
+  };
 
   const enterCabin = () => {
     const cabin = showroomApi.current?.cabin;
