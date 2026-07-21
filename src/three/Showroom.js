@@ -523,14 +523,17 @@ export class Showroom {
         obj.material = mat;
         R.carpet.push(mat);
       } else if (node.includes("wooddfs")) {
+        // open-pore walnut is a hand-rubbed satin, not a wet mirror — a soft
+        // clearcoat keeps it luxurious without blowing a hot HDR hotspot on
+        // the fold-out tables in the seated camera angles
         const mat = mk({
           map: this._woodTexture(),
           color: 0xb9855a,
-          roughness: 0.22,
+          roughness: 0.34,
           metalness: 0.05,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.12,
-          envMapIntensity: 0.5,
+          clearcoat: 0.45,
+          clearcoatRoughness: 0.35,
+          envMapIntensity: 0.2,
         });
         obj.material = mat;
         R.wood.push(mat);
@@ -546,8 +549,10 @@ export class Showroom {
         obj.material = mat;
         R.belts.push(mat);
       } else if (node.includes("interiordfs") || node.includes("ff999999")) {
-        // dash / door-card leather wrap — the pale surround tone
-        const mat = mk({ color: 0xded4c2, roughness: 0.6, metalness: 0.03 });
+        // dash / door-card leather wrap — the pale surround tone. Kept matte
+        // with low env so the studio HDR doesn't blow a hot streak across the
+        // fold-out tables and fascia in the seated camera angles.
+        const mat = mk({ color: 0xded4c2, roughness: 0.78, metalness: 0.02, envMapIntensity: 0.1 });
         obj.material = mat;
         R.cabin.push(mat);
       } else if (node.includes("ffcccccc") || node.includes("ff9a9a9a")) {

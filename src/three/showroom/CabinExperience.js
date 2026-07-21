@@ -142,41 +142,45 @@ export class CabinExperience {
     this.viewpoints = {
       lounge: {
         label: "Lounge",
-        pos: this.W(0.72, 0.68, 0.46),
-        look: this.W(0.2, 0.55, 0.52),
-        after: { mode: "orbit", target: this.W(0.42, 0.5, 0.5), minR: 0.4, maxR: 1.6, minPhi: 0.6, maxPhi: 1.9 },
+        // signature symmetric shot down the cabin spine, rear to dash
+        pos: this.W(0.78, 0.64, 0.5),
+        look: this.W(0.12, 0.56, 0.5),
+        after: { mode: "orbit", target: this.W(0.4, 0.54, 0.5), minR: 0.5, maxR: 1.8, minPhi: 0.68, maxPhi: 1.78 },
       },
       driver: {
         label: "Driver's seat",
-        pos: this.W(0.5, 0.75, 0.7),
-        look: this.W(0.02, 0.58, 0.68),
+        // seated at the wheel, gaze forward and gently down over the rim
+        pos: this.W(0.52, 0.78, 0.685),
+        look: this.W(0.16, 0.47, 0.645),
         after: { mode: "pov" },
       },
       passenger: {
         label: "Passenger",
-        pos: this.W(0.5, 0.75, 0.3),
-        look: this.W(0.02, 0.58, 0.32),
+        // the passenger's outlook: veneer fascia, vents, jewelled switchgear
+        pos: this.W(0.52, 0.78, 0.315),
+        look: this.W(0.16, 0.47, 0.355),
         after: { mode: "pov" },
       },
       rearLeft: {
         label: "Rear lounge · left",
-        pos: this.W(0.72, seatY, 0.3),
-        look: this.W(0.16, 0.55, 0.46),
+        // seated in the rear-left, clear of the seat back, gaze level forward
+        pos: this.W(0.74, 0.66, 0.38),
+        look: this.W(0.14, 0.58, 0.45),
         after: { mode: "pov" },
       },
       rearRight: {
         label: "Rear lounge · right",
-        pos: this.W(0.72, seatY, 0.7),
-        look: this.W(0.16, 0.55, 0.54),
+        pos: this.W(0.74, 0.66, 0.62),
+        look: this.W(0.14, 0.58, 0.55),
         after: { mode: "pov" },
       },
       starlight: {
         label: "Starlight",
-        // reclined in the rear, gaze up the curve of the canopy
-        pos: this.W(0.82, 0.52, 0.5),
-        look: this.W(0.42, 1.5, 0.5),
+        // reclined in the rear, gaze up at the canopy above the front seats
+        pos: this.W(0.78, 0.7, 0.5),
+        look: this.W(0.66, 0.95, 0.5),
         // orbit beneath the canopy so the whole sky can be explored
-        after: { mode: "orbit", target: this.W(0.44, 1.42, 0.5), minR: 0.7, maxR: 2.9, minPhi: 1.42, maxPhi: 2.95 },
+        after: { mode: "orbit", target: this.W(0.66, 0.92, 0.5), minR: 0.5, maxR: 2.0, minPhi: 1.45, maxPhi: 2.72 },
         starlight: true,
       },
       exterior: {
