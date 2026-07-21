@@ -4,6 +4,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Experience from "./components/Experience";
 import CabinHUD from "./components/CabinHUD";
+import RideHUD from "./components/RideHUD";
 import { LINEUP, PAINTS, TWO_TONE, LEATHERS, WOODS, JEWELLERY, CALIPERS } from "./data/lineup";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -43,6 +44,7 @@ export default function App() {
   const [driveMode, setDriveMode] = useState(false);
   const [driveView, setDriveView] = useState("side");
   const [ridePhase, setRidePhase] = useState("pavilion");
+  const [telemetry, setTelemetry] = useState(null);
   const [cabinMode, setCabinMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const lenisRef = useRef();
@@ -97,7 +99,7 @@ export default function App() {
   };
 
   return <div className="atelier-shell">
-    <Experience apiRef={showroomApi} activeModel={activeModel} paint={paint.hex} twoTone={twoTone.hex} leather={leather.hex} wood={wood.hex} jewellery={jewellery.id} caliper={caliper.hex} doorsOpen={doorsOpen} bonnetOpen={bonnetOpen} driveMode={driveMode} sectionIndex={section} onProgress={setProgress} onReady={() => setLoading(false)} onBusy={setBusy} />
+    <Experience apiRef={showroomApi} activeModel={activeModel} paint={paint.hex} twoTone={twoTone.hex} leather={leather.hex} wood={wood.hex} jewellery={jewellery.id} caliper={caliper.hex} doorsOpen={doorsOpen} bonnetOpen={bonnetOpen} driveMode={driveMode} sectionIndex={section} onProgress={setProgress} onReady={() => setLoading(false)} onBusy={setBusy} onTelemetry={setTelemetry} />
 
     {loading && <div className="prelude"><div className="prelude-mark">RR</div><p>Rolls-Royce</p><div className="loading-line"><i style={{ width: `${Math.max(progress, 5)}%` }} /></div><small>Preparing the private atelier · {progress}%</small></div>}
 
@@ -107,20 +109,20 @@ export default function App() {
       <div className="header-actions">{!cabinMode && <><button className="text-button" onClick={() => setPanelOpen(true)}>Configure <Arrow /></button><button className={`drive-button ${driveMode ? "live" : ""}`} onClick={() => setDriveMode(!driveMode)}>{driveMode ? "Return to atelier" : "Enter the pavilion"}</button></>}</div>
     </header>
 
-    {driveMode && <div className="pavilion-hud" data-ui>
+    {driveMode && ridePhase === "pavilion" && <div className="pavilion-hud" data-ui>
       <div className="pavilion-caption">
-        <p className="kicker">{ridePhase === "riding" ? "The magic carpet ride · through the city" : "The private pavilion · overlooking the city"}</p>
+        <p className="kicker">The private pavilion · overlooking the city</p>
         <h3>{activeModel}</h3>
       </div>
-      {ridePhase === "pavilion" ? <>
-        <nav className="view-switch" aria-label="Camera view">
-          {[["front", "Front view"], ["side", "Side view"], ["rear", "Rear view"]].map(([id, label]) => (
-            <button key={id} className={driveView === id ? "is-active" : ""} onClick={() => { setDriveView(id); showroomApi.current?.setDriveView(id); }}>{label}</button>
-          ))}
-        </nav>
-        <button className="engine-start" onClick={startRide}><span className="es-dot" />Start engine</button>
-      </> : <button className="engine-start halt" onClick={stopRide}>Slow to a halt</button>}
+      <nav className="view-switch" aria-label="Camera view">
+        {[["front", "Front view"], ["side", "Side view"], ["rear", "Rear view"]].map(([id, label]) => (
+          <button key={id} className={driveView === id ? "is-active" : ""} onClick={() => { setDriveView(id); showroomApi.current?.setDriveView(id); }}>{label}</button>
+        ))}
+      </nav>
+      <button className="engine-start" onClick={startRide}><span className="es-dot" />Start engine</button>
     </div>}
+
+    {driveMode && ridePhase === "riding" && <RideHUD showroomApi={showroomApi} telemetry={telemetry} onHalt={stopRide} />}
 
     {!driveMode && !cabinMode && <><aside className="chapter-rail">{CHAPTERS.map(([id, label], index) => <button onClick={() => go(id)} key={id} className={index === section ? "active" : ""}><i /><span>{String(index + 1).padStart(2, "0")}</span><em>{label}</em></button>)}</aside><div className="view-hint">Drag to explore <i>↔</i></div></>}
 

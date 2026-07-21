@@ -878,22 +878,19 @@ export class Showroom {
     window.addEventListener("wheel", this._onWheel, { passive: true });
 
     this._onKeyDown = (e) => {
-      if (!this.driveMode) return;
-      if (["ArrowLeft", "a", "A"].includes(e.key)) {
-        this.drive.targetX = -1.6;
-        this.drive.targetRoll = 0.05;
-      }
-      if (["ArrowRight", "d", "D"].includes(e.key)) {
-        this.drive.targetX = 1.6;
-        this.drive.targetRoll = -0.05;
-      }
+      if (!this.driveMode || !this.drive?.input) return;
+      const k = e.key;
+      if (["ArrowLeft", "a", "A"].includes(k)) this.drive.input.steer = -1;
+      if (["ArrowRight", "d", "D"].includes(k)) this.drive.input.steer = 1;
+      if (["ArrowUp", "w", "W"].includes(k)) this.drive.input.throttle = 1;
+      if (["ArrowDown", "s", "S"].includes(k)) this.drive.input.brake = 1;
     };
     this._onKeyUp = (e) => {
-      if (!this.driveMode) return;
-      if (["ArrowLeft", "a", "A", "ArrowRight", "d", "D"].includes(e.key)) {
-        this.drive.targetX = 0;
-        this.drive.targetRoll = 0;
-      }
+      if (!this.driveMode || !this.drive?.input) return;
+      const k = e.key;
+      if (["ArrowLeft", "a", "A", "ArrowRight", "d", "D"].includes(k)) this.drive.input.steer = 0;
+      if (["ArrowUp", "w", "W"].includes(k)) this.drive.input.throttle = 0;
+      if (["ArrowDown", "s", "S"].includes(k)) this.drive.input.brake = 0;
     };
     window.addEventListener("keydown", this._onKeyDown);
     window.addEventListener("keyup", this._onKeyUp);
@@ -953,6 +950,12 @@ export class Showroom {
         if (Math.abs(this.camera.fov - targetFov) > 0.01) {
           this.camera.fov += (targetFov - this.camera.fov) * 0.06;
           this.camera.updateProjectionMatrix();
+        }
+        // HUD telemetry at ~8 Hz
+        telemetryAcc += dt;
+        if (telemetryAcc > 0.12 && this.onTelemetry) {
+          telemetryAcc = 0;
+          this.onTelemetry(this.drive.getTelemetry());
         }
       } else if (this.cabinFocus) {
         // Cinematic fly-to owns the camera during transitions.
@@ -1156,12 +1159,37 @@ export class Showroom {
     if (this.drive) this.drive.setView(id);
   }
 
-  startRide() { this.drive?.startRide(); }
-  stopRide() { this.drive?.stopRide(); }
+  startRide() {
+    this.drive?.startRide();
+    // the studio HDR must fall away at speed — the city becomes the light
+    gsap.to(this.scene, { environmentIntensity: 0.16, duration: 1.6, ease: "power2.inOut" });
+  }
+  stopRide() {
+    this.drive?.stopRide();
+    gsap.to(this.scene, { environmentIntensity: 0.5, duration: 1.2, ease: "power2.inOut" });
+  }
+  setRideCam(id) { this.drive?.setRideCam(id); }
+  setCinematic(on) { this.drive?.setCinematic(on); }
+  setHighBeam(on) { this.drive?.setHighBeam(on); }
+  setIndicator(dir) { this.drive?.setIndicator(dir); }
+  setHazards(on) { this.drive?.setHazards(on); }
+
+  /* driving mode: engine params + scene-wide grade in one motion */
+  setRideMode(id) {
+    const m = this.drive?.setMode(id);
+    if (!m) return;
+    if (this.scene.fog) gsap.to(this.scene.fog, { density: m.fog, duration: 1.2, ease: "power2.inOut" });
+    gsap.to(this.bloom, { strength: m.bloom, duration: 1.2 });
+    gsap.to(this.scene, { environmentIntensity: id === "night" ? 0.07 : 0.16, duration: 1.2 });
+  }
 
   setDrive(on) {
     this.driveMode = on;
     const active = this.cars[this.activeKey];
+
+    // the atelier lives within 160m; the night city needs a real horizon
+    this.camera.far = on ? 700 : 160;
+    this.camera.updateProjectionMatrix();
 
     // reveal / conceal the pavilion; it parks the car in perfect profile
     this.drive.setVisible(on, active);

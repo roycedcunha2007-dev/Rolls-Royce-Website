@@ -196,6 +196,35 @@ export class CabinSFX {
     }
   }
 
+  /* Wind + tyre wash for the drive — level 0..1 follows road speed. */
+  setWind(level) {
+    const ctx = this._ensure();
+    if (level > 0.01 && !this.windNode) {
+      const t = ctx.currentTime;
+      const src = this._noise(2.2);
+      src.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 420;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      src.connect(lp).connect(g).connect(this.master);
+      src.start(t);
+      this.windNode = { src, g, lp };
+    }
+    if (this.windNode) {
+      const t = ctx.currentTime;
+      const target = Math.min(0.075, level * 0.075);
+      this.windNode.g.gain.cancelScheduledValues(t);
+      this.windNode.g.gain.setTargetAtTime(target, t, 0.4);
+      this.windNode.lp.frequency.setTargetAtTime(320 + level * 700, t, 0.5);
+      if (level <= 0.01) {
+        this.windNode.src.stop(t + 1.2);
+        this.windNode = null;
+      }
+    }
+  }
+
   /* Rain on the roof — filtered noise, heard through 6mm of glass. */
   setRain(on) {
     const ctx = this._ensure();
@@ -230,6 +259,7 @@ export class CabinSFX {
     try {
       this.setAmbience(false);
       this.setRain(false);
+      this.setWind(0);
       this.ctx?.close();
     } catch {
       /* already closed */

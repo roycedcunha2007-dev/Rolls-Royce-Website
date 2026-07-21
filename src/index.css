@@ -1400,3 +1400,53 @@ footer {
 .pavilion-hud .engine-start.halt:hover { transform:translateX(-50%) translateY(-2px); color:var(--warm); }
 .pavilion-hud .engine-start.halt .es-dot,.pavilion-hud .engine-start.halt::before { display:none; }
 @media(max-width:800px){ .pavilion-hud .engine-start{right:auto; left:50%; transform:translateX(-50%); bottom:96px} .pavilion-hud .engine-start.halt{bottom:44px} }
+
+
+/* ---- RideHUD: the Rolls-Royce instrument suite ---- */
+.ride-hud { position:fixed; inset:0; z-index:30; pointer-events:none; font-family:var(--sans); }
+.ride-hud button { pointer-events:auto; }
+
+.cluster { position:absolute; left:4.5vw; bottom:40px; width:230px; padding:16px 18px 13px; border-radius:18px; background:rgba(8,11,16,.55); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px); box-shadow:0 24px 70px #000a; }
+.cluster .dial { display:block; width:100%; height:auto; }
+.cluster-digital { position:absolute; top:74px; left:0; right:0; text-align:center; }
+.cluster-digital b { font-family:var(--serif); font-weight:400; font-size:34px; color:var(--paper); letter-spacing:.02em; }
+.cluster-digital span { display:block; margin-top:-2px; font:8px var(--mono); letter-spacing:.3em; text-transform:uppercase; color:#9a978e; }
+.cluster-row { display:flex; justify-content:space-between; margin-top:8px; padding-top:9px; border-top:1px solid rgba(255,255,255,.09); font:8.5px var(--mono); letter-spacing:.1em; color:#c9c5ba; }
+.cluster-row span:first-child { color:var(--accent, var(--warm)); }
+.cluster-note { margin:7px 0 0; text-align:center; font:8px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:#8e8b82; }
+
+.mode-dock { position:absolute; left:50%; bottom:40px; transform:translateX(-50%); display:flex; gap:3px; padding:5px; border-radius:999px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(20px); box-shadow:0 18px 55px #0009; }
+.mode-dock button { background:transparent; border:0; color:#c3c0b6; padding:11px 17px; border-radius:999px; cursor:pointer; font-size:8.6px; letter-spacing:.2em; text-transform:uppercase; transition:color .5s, background .5s; white-space:nowrap; }
+.mode-dock button:hover { color:var(--paper); }
+.mode-dock button.is-active { color:#14120c; background:var(--accent, #d8b878); box-shadow:0 6px 20px rgba(216,184,120,.3); }
+
+.cam-dock { position:absolute; right:4.5vw; bottom:40px; display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:6px; border-radius:16px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(20px); box-shadow:0 18px 55px #0009; }
+.cam-dock button { background:transparent; border:0; color:#bfbcb2; padding:9px 13px; border-radius:10px; cursor:pointer; font-size:8.4px; letter-spacing:.16em; text-transform:uppercase; transition:color .4s, background .4s; }
+.cam-dock button:hover { color:var(--paper); background:#ffffff0c; }
+.cam-dock button.is-active { color:#14120c; background:var(--accent, #d8b878); }
+.cam-dock button.wide { grid-column:span 1; }
+
+.ctrl-dock { position:absolute; top:96px; right:4.5vw; display:flex; flex-direction:column; gap:3px; padding:6px; border-radius:16px; background:rgba(10,14,20,.46); border:1px solid rgba(216,194,156,.16); backdrop-filter:blur(18px); box-shadow:0 18px 55px #0008; }
+.ctrl-dock button { background:transparent; border:0; color:#bfbcb2; padding:9px 14px; border-radius:10px; cursor:pointer; font-size:8.4px; letter-spacing:.16em; text-transform:uppercase; text-align:left; transition:color .4s, background .4s; white-space:nowrap; }
+.ctrl-dock button:hover { color:var(--paper); background:#ffffff0c; }
+.ctrl-dock button.is-live { color:var(--accent, #d8b878); background:rgba(216,184,120,.1); }
+.ctrl-dock button.halt { margin-top:5px; border-top:1px solid rgba(255,255,255,.1); border-radius:0 0 10px 10px; color:#e8e2d4; }
+.ctrl-dock button.halt:hover { color:var(--warm); }
+
+.ride-hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); margin:0; font:8px var(--mono); letter-spacing:.26em; text-transform:uppercase; color:#7d7a72; }
+
+/* photo mode: pure cinema */
+.ride-hud.photo .letterbox { position:absolute; left:0; right:0; height:9vh; background:#000; }
+.ride-hud.photo .letterbox.top { top:0; }
+.ride-hud.photo .letterbox.bottom { bottom:0; }
+.photo-exit { position:absolute; bottom:2.6vh; left:50%; transform:translateX(-50%); background:transparent; border:1px solid rgba(255,255,255,.25); border-radius:999px; color:#cfccc2; padding:9px 20px; font-size:8.5px; letter-spacing:.24em; text-transform:uppercase; cursor:pointer; transition:.4s; }
+.photo-exit:hover { color:var(--warm); border-color:var(--warm); }
+
+@media(max-width:900px){
+  .cluster{ left:12px; bottom:150px; width:172px; padding:12px 13px 10px; }
+  .cluster-digital{ top:52px; } .cluster-digital b{ font-size:25px; }
+  .mode-dock{ bottom:96px; max-width:96vw; overflow-x:auto; }
+  .cam-dock{ right:12px; bottom:150px; grid-template-columns:1fr; padding:4px; }
+  .ctrl-dock{ top:84px; right:12px; }
+  .ride-hint{ display:none; }
+}
