@@ -41,6 +41,8 @@ export default function App() {
   const [doorsOpen, setDoorsOpen] = useState(false);
   const [bonnetOpen, setBonnetOpen] = useState(false);
   const [driveMode, setDriveMode] = useState(false);
+  const [driveView, setDriveView] = useState("side");
+  const [ridePhase, setRidePhase] = useState("pavilion");
   const [cabinMode, setCabinMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const lenisRef = useRef();
@@ -64,6 +66,9 @@ export default function App() {
 
   useEffect(() => { if (section === 3) setDoorsOpen(true); else setDoorsOpen(false); setBonnetOpen(section === 4); }, [section]);
   useEffect(() => { if (driveMode || cabinMode) lenisRef.current?.stop(); else lenisRef.current?.start(); }, [driveMode, cabinMode]);
+  useEffect(() => { if (driveMode) { setDriveView("side"); setRidePhase("pavilion"); } }, [driveMode]);
+  const startRide = () => { showroomApi.current?.startRide(); setRidePhase("riding"); };
+  const stopRide = () => { showroomApi.current?.stopRide(); setRidePhase("pavilion"); };
 
   const enterCabin = () => {
     const cabin = showroomApi.current?.cabin;
@@ -90,8 +95,23 @@ export default function App() {
     <header className="topbar">
       <button className="brand" onClick={() => go("arrival")} aria-label="Return to arrival"><b>ROLLS-ROYCE</b><span>Motor Cars · Digital Atelier</span></button>
       <nav className="model-nav" aria-label="Motor car selection">{Object.keys(LINEUP).map((model) => <button disabled={busy} className={model === activeModel ? "current" : ""} onClick={() => setActiveModel(model)} key={model}>{model}</button>)}</nav>
-      <div className="header-actions">{!cabinMode && <><button className="text-button" onClick={() => setPanelOpen(true)}>Configure <Arrow /></button><button className={`drive-button ${driveMode ? "live" : ""}`} onClick={() => setDriveMode(!driveMode)}>{driveMode ? "Return to atelier" : "Enter the drive"}</button></>}</div>
+      <div className="header-actions">{!cabinMode && <><button className="text-button" onClick={() => setPanelOpen(true)}>Configure <Arrow /></button><button className={`drive-button ${driveMode ? "live" : ""}`} onClick={() => setDriveMode(!driveMode)}>{driveMode ? "Return to atelier" : "Enter the pavilion"}</button></>}</div>
     </header>
+
+    {driveMode && <div className="pavilion-hud" data-ui>
+      <div className="pavilion-caption">
+        <p className="kicker">{ridePhase === "riding" ? "The magic carpet ride · through the city" : "The private pavilion · overlooking the city"}</p>
+        <h3>{activeModel}</h3>
+      </div>
+      {ridePhase === "pavilion" ? <>
+        <nav className="view-switch" aria-label="Camera view">
+          {[["front", "Front view"], ["side", "Side view"], ["rear", "Rear view"]].map(([id, label]) => (
+            <button key={id} className={driveView === id ? "is-active" : ""} onClick={() => { setDriveView(id); showroomApi.current?.setDriveView(id); }}>{label}</button>
+          ))}
+        </nav>
+        <button className="engine-start" onClick={startRide}><span className="es-dot" />Start engine</button>
+      </> : <button className="engine-start halt" onClick={stopRide}>Slow to a halt</button>}
+    </div>}
 
     {!driveMode && !cabinMode && <><aside className="chapter-rail">{CHAPTERS.map(([id, label], index) => <button onClick={() => go(id)} key={id} className={index === section ? "active" : ""}><i /><span>{String(index + 1).padStart(2, "0")}</span><em>{label}</em></button>)}</aside><div className="view-hint">Drag to explore <i>↔</i></div></>}
 
@@ -111,6 +131,6 @@ export default function App() {
       <section id="commission" className="scene-section commission-section"><div className="commission-copy" data-reveal><p className="kicker">05 · Your commission</p><h2>Made for <em>no one else.</em></h2><p>Begin a private conversation with a Rolls-Royce specialist. There is no configurator at the end of this experience—only the start of yours.</p><button className="commission-button" onClick={commission}>Request a private consultation <Arrow /></button></div><footer><span>Rolls-Royce Motor Cars</span><span>Digital Atelier · 2026</span><span>Designed around you</span></footer></section>
     </main>
 
-    {panelOpen && <div className="config-overlay" role="dialog" aria-modal="true" aria-label="Bespoke material library"><button className="scrim" onClick={() => setPanelOpen(false)} aria-label="Close material library" /><aside className="config-panel"><button className="close" onClick={() => setPanelOpen(false)}>Close <span>×</span></button><p className="kicker">The material library</p><h2>Your <em>{activeModel}</em></h2><p className="panel-copy">A private study in colour, tactility and light.</p><OptionRow label="Coachwork" items={PAINTS} active={paint} onChange={setPaint} color /><OptionRow label="Upper coachwork" items={TWO_TONE} active={twoTone} onChange={setTwoTone} color /><OptionRow label="Leather" items={LEATHERS} active={leather} onChange={setLeather} color /><OptionRow label="Veneer" items={WOODS} active={wood} onChange={setWood} /><OptionRow label="Jewellery" items={JEWELLERY} active={jewellery} onChange={setJewellery} /><OptionRow label="Brake calipers" items={CALIPERS} active={caliper} onChange={setCaliper} color /><button className="commission-button full" onClick={commission}>Save this private commission <Arrow /></button></aside></div>}
+    {panelOpen && <div className="config-overlay" role="dialog" aria-modal="true" aria-label="Bespoke material library"><button className="scrim" onClick={() => setPanelOpen(false)} aria-label="Close material library" /><aside className="config-panel" data-lenis-prevent><button className="close" onClick={() => setPanelOpen(false)}>Close <span>×</span></button><p className="kicker">The material library</p><h2>Your <em>{activeModel}</em></h2><p className="panel-copy">A private study in colour, tactility and light.</p><OptionRow label="Coachwork" items={PAINTS} active={paint} onChange={setPaint} color /><OptionRow label="Upper coachwork" items={TWO_TONE} active={twoTone} onChange={setTwoTone} color /><OptionRow label="Leather" items={LEATHERS} active={leather} onChange={setLeather} color /><OptionRow label="Veneer" items={WOODS} active={wood} onChange={setWood} /><OptionRow label="Jewellery" items={JEWELLERY} active={jewellery} onChange={setJewellery} /><OptionRow label="Brake calipers" items={CALIPERS} active={caliper} onChange={setCaliper} color /><button className="commission-button full" onClick={commission}>Save this private commission <Arrow /></button></aside></div>}
   </div>;
 }

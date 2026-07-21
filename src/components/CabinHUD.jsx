@@ -204,7 +204,7 @@ export default function CabinHUD({ showroomApi, onExit }) {
         </button>
 
         {panelOpen && (
-          <div className="dock-body">
+          <div className="dock-body" data-lenis-prevent>
             <p className="kicker">The commission</p>
             <div className="dock-tabs">
               {TABS.map(([id, label]) => (

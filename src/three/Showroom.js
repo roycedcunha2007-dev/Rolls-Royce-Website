@@ -936,20 +936,23 @@ export class Showroom {
       if (this.driveMode && active) {
         this.drive.update(dt, t, active);
 
-        // Chase camera smoothing
-        this.smoothPos.lerp(new THREE.Vector3(active.group.position.x * 0.55, 2.15 + Math.cos(t * 5) * 0.02, 9.8), 0.05);
-        this.smoothLook.lerp(new THREE.Vector3(active.group.position.x * 0.8, 0.95, -4), 0.08);
-        this.camera.position.copy(this.smoothPos);
+        // Cinematic dolly toward the selected pavilion composition. Because
+        // the view target swaps instantly but the lerp is slow, switching
+        // views reads as a smooth luxury-film camera move.
+        const v = this.drive.getViewTarget();
+        this.smoothPos.lerp(v.pos, 0.05);
+        this.smoothLook.lerp(v.look, 0.06);
+        this.camera.position.set(
+          this.smoothPos.x + this.mouse.x * 0.14,
+          this.smoothPos.y - this.mouse.y * 0.06,
+          this.smoothPos.z
+        );
         this.camera.lookAt(this.smoothLook);
-
-        telemetryAcc += dt;
-        if (telemetryAcc > 0.12 && this.onTelemetry) {
-          telemetryAcc = 0;
-          this.onTelemetry({
-            speed: Math.round(this.drive.speed),
-            rpm: Math.round(this.drive.rpm),
-            rpmRatio: (this.drive.rpm - 1800) / 2600,
-          });
+        // ease toward the composition's long-lens focal length
+        const targetFov = v.fov || 30;
+        if (Math.abs(this.camera.fov - targetFov) > 0.01) {
+          this.camera.fov += (targetFov - this.camera.fov) * 0.06;
+          this.camera.updateProjectionMatrix();
         }
       } else if (this.cabinFocus) {
         // Cinematic fly-to owns the camera during transitions.
@@ -1149,69 +1152,67 @@ export class Showroom {
     }
   }
 
+  setDriveView(id) {
+    if (this.drive) this.drive.setView(id);
+  }
+
+  startRide() { this.drive?.startRide(); }
+  stopRide() { this.drive?.stopRide(); }
+
   setDrive(on) {
     this.driveMode = on;
-
-    // Toggle driving scenery and active headlights
     const active = this.cars[this.activeKey];
+
+    // reveal / conceal the pavilion; it parks the car in perfect profile
     this.drive.setVisible(on, active);
 
-    // Toggle showroom architecture and furniture visibility
+    // hide the atelier gallery and its furniture while in the pavilion
     if (this.architecture) this.architecture.setVisible(!on);
     if (this.props) this.props.setVisible(!on);
-
-    // Animate lights
+    if (this.floor) this.floor.setVisible?.(!on);
     if (this.lights) this.lights.setDriveMode(on);
+    if (this.interiorCar) this.interiorCar.group.visible = !on;
+    if (this.starPoints) this.starPoints.visible = !on;
+    if (this.cabin?.strips) this.cabin.strips.visible = !on;
+    if (this.dust) this.dust.visible = !on;
 
-    // Transition background color and fog
-    const targetBg = on ? 0x06070a : 0x87979d;
-    const targetFog = on ? 0x06070a : 0x3e403c;
-    const targetFogDensity = on ? 0.022 : 0.0055;
-
+    // a deep, hazy night settles over the pavilion for atmospheric depth
+    const bg = on ? 0x060b12 : 0x87979d;
+    const fog = on ? 0x0a1622 : 0x3e403c;
+    const fogD = on ? 0.011 : 0.0055;
     if (this.scene.background) {
       gsap.to(this.scene.background, {
-        r: ((targetBg >> 16) & 255) / 255,
-        g: ((targetBg >> 8) & 255) / 255,
-        b: (targetBg & 255) / 255,
-        duration: 0.8,
-        ease: "power2.out",
+        r: ((bg >> 16) & 255) / 255, g: ((bg >> 8) & 255) / 255, b: (bg & 255) / 255,
+        duration: 0.9, ease: "power2.inOut",
       });
     }
     if (this.scene.fog) {
       gsap.to(this.scene.fog.color, {
-        r: ((targetFog >> 16) & 255) / 255,
-        g: ((targetFog >> 8) & 255) / 255,
-        b: (targetFog & 255) / 255,
-        duration: 0.8,
-        ease: "power2.out",
+        r: ((fog >> 16) & 255) / 255, g: ((fog >> 8) & 255) / 255, b: (fog & 255) / 255,
+        duration: 0.9, ease: "power2.inOut",
       });
-      gsap.to(this.scene.fog, {
-        density: targetFogDensity,
-        duration: 0.8,
-        ease: "power2.out",
-      });
+      gsap.to(this.scene.fog, { density: fogD, duration: 0.9, ease: "power2.inOut" });
     }
-
-    if (this.interiorCar) this.interiorCar.group.visible = !on;
-    if (this.starPoints) this.starPoints.visible = !on;
-    if (this.cabin?.strips) this.cabin.strips.visible = !on;
+    // a moodier, night environment exposure
+    gsap.to(this.scene, { environmentIntensity: on ? 0.5 : 0.7, duration: 0.9 });
+    gsap.to(this.bloom, { strength: on ? 0.26 : 0.14, duration: 0.9 });
 
     if (on) {
       this.setDoors(false);
       this.setBonnet(false);
-      if (active) {
-        gsap.to(active.group.rotation, { y: Math.PI / 2, duration: 1.0, ease: "power2.inOut" });
-        this.targetTurn = Math.PI / 2;
-        this.turn = Math.PI / 2;
+      this.drive.setView("side");
+      // seed the camera near the side composition so the reveal eases in
+      if (this.drive.views) {
+        this.smoothPos.copy(this.drive.views.side.pos).add(new THREE.Vector3(2, 1.4, 3));
+        this.smoothLook.copy(this.drive.views.side.look);
       }
     } else if (active) {
-      active.group.position.x = 0;
-      active.group.rotation.z = 0;
-      active.group.position.y = 0;
-      this.targetTurn = 0;
-      this.turn = 0;
-      gsap.to(active.group.rotation, { y: 0, duration: 0.9, ease: "power2.inOut" });
+      active.group.position.set(0, 0, 0);
+      active.group.rotation.set(0, this.turn, 0);
       for (const w of active.wheelPivots) w.rotation.z = 0;
+      // restore the atelier lens + camera
+      this.camera.fov = 39;
+      this.camera.updateProjectionMatrix();
       this.smoothPos.copy(this.camState.pos);
       this.smoothLook.copy(this.camState.look);
     }

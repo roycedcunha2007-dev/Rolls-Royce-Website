@@ -79,6 +79,10 @@ export class ShowroomFloor {
     scene.add(this.mesh);
   }
 
+  setVisible(v) {
+    if (this.mesh) this.mesh.visible = v;
+  }
+
   update(renderer, scene, camera) {
     if (renderer.currentRenderTarget !== null) return;
 

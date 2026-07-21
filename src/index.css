@@ -1376,3 +1376,16 @@ footer {
   footer span:nth-child(2) { display: none; }
   .brand b { font-size: 14px; }
 }
+
+
+/* ---- The private pavilion (Magic Carpet Ride, reimagined) ---- */
+.pavilion-hud { position:fixed; inset:0; z-index:30; pointer-events:none; }
+.pavilion-hud button { pointer-events:auto; }
+.pavilion-caption { position:absolute; left:4.5vw; bottom:52px; }
+.pavilion-caption .kicker { margin:0 0 8px; }
+.pavilion-caption h3 { margin:0; font-family:var(--serif); font-weight:400; font-size:clamp(26px,3vw,40px); letter-spacing:.01em; color:var(--paper); }
+.view-switch { position:absolute; left:50%; bottom:44px; transform:translateX(-50%); display:flex; gap:4px; padding:6px; border-radius:999px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.22); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); box-shadow:0 20px 60px #0009; }
+.view-switch button { position:relative; background:transparent; border:0; color:#c9c6bd; padding:12px 26px; border-radius:999px; cursor:pointer; font-size:9.5px; letter-spacing:.24em; text-transform:uppercase; transition:color .6s cubic-bezier(.22,1,.36,1), background .6s cubic-bezier(.22,1,.36,1); }
+.view-switch button:hover { color:var(--warm); }
+.view-switch button.is-active { color:#14120c; background:linear-gradient(135deg,#e6cfa0,#d8b878); box-shadow:0 6px 22px rgba(216,184,120,.35); }
+@media(max-width:800px){ .pavilion-caption{left:22px; bottom:96px} .view-switch button{padding:11px 16px; letter-spacing:.16em} }
