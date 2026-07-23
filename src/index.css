@@ -1406,7 +1406,7 @@ footer {
 .ride-hud { position:fixed; inset:0; z-index:30; pointer-events:none; font-family:var(--sans); }
 .ride-hud button { pointer-events:auto; }
 
-.cluster { position:absolute; left:4.5vw; bottom:40px; width:230px; padding:16px 18px 13px; border-radius:18px; background:rgba(8,11,16,.55); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px); box-shadow:0 24px 70px #000a; }
+.cluster { position:absolute; left:4.5vw; bottom:40px; width:248px; padding:16px 18px 13px; border-radius:18px; background:rgba(8,11,16,.55); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px); box-shadow:0 24px 70px #000a; }
 .cluster .dial { display:block; width:100%; height:auto; }
 .cluster-digital { position:absolute; top:74px; left:0; right:0; text-align:center; }
 .cluster-digital b { font-family:var(--serif); font-weight:400; font-size:34px; color:var(--paper); letter-spacing:.02em; }
@@ -1420,7 +1420,7 @@ footer {
 .mode-dock button:hover { color:var(--paper); }
 .mode-dock button.is-active { color:#14120c; background:var(--accent, #d8b878); box-shadow:0 6px 20px rgba(216,184,120,.3); }
 
-.cam-dock { position:absolute; right:4.5vw; bottom:40px; display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:6px; border-radius:16px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(20px); box-shadow:0 18px 55px #0009; }
+.cam-dock { position:absolute; right:4.5vw; bottom:40px; display:flex; flex-direction:column; gap:7px; padding:9px 10px; border-radius:16px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(20px); box-shadow:0 18px 55px #0009; }
 .cam-dock button { background:transparent; border:0; color:#bfbcb2; padding:9px 13px; border-radius:10px; cursor:pointer; font-size:8.4px; letter-spacing:.16em; text-transform:uppercase; transition:color .4s, background .4s; }
 .cam-dock button:hover { color:var(--paper); background:#ffffff0c; }
 .cam-dock button.is-active { color:#14120c; background:var(--accent, #d8b878); }
@@ -1449,4 +1449,23 @@ footer {
   .cam-dock{ right:12px; bottom:150px; grid-template-columns:1fr; padding:4px; }
   .ctrl-dock{ top:84px; right:12px; }
   .ride-hint{ display:none; }
+}
+
+
+/* ---- RideHUD additions: grouped camera rig, sub telemetry, tunnel flag ---- */
+.cluster-row.sub { margin-top:5px; padding-top:6px; border-top:1px solid rgba(255,255,255,.055); font-size:7.6px; color:#94918a; }
+.cluster-row.sub span:first-child { color:#b6b2a8; }
+
+.cam-group-label { margin:0 0 4px 3px; font:7.4px var(--mono); letter-spacing:.26em; text-transform:uppercase; color:#7f7c74; }
+.cam-grid { display:grid; grid-template-columns:1fr 1fr; gap:3px; }
+.cam-actions { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding-top:7px; border-top:1px solid rgba(255,255,255,.08); }
+.cam-dock .cam-actions button { letter-spacing:.18em; }
+
+.ride-flag { position:absolute; top:22px; left:50%; transform:translateX(-50%); margin:0; padding:6px 16px; border-radius:999px; background:rgba(255,180,87,.12); border:1px solid rgba(255,180,87,.34); font:8px var(--mono); letter-spacing:.3em; text-transform:uppercase; color:#ffb457; }
+
+@media(max-width:900px){
+  .cam-dock{ gap:4px; padding:6px; }
+  .cam-group-label{ display:none; }
+  .cam-grid{ grid-template-columns:1fr 1fr; }
+  .cluster-row.sub{ display:none; }
 }

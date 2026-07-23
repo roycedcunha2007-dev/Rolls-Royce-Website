@@ -225,6 +225,46 @@ export class CabinSFX {
     }
   }
 
+  /*
+   * Tyre roar — the low, broadband rumble of 21-inch tyres on asphalt.
+   * Distinct from wind: lower, bandpassed rather than lowpassed, and it
+   * hardens (opens up) inside a tunnel where there is nowhere for the
+   * sound to go. level 0..1 follows road speed.
+   */
+  setTyre(level, enclosed = false) {
+    const ctx = this._ensure();
+    if (level > 0.01 && !this.tyreNode) {
+      const t = ctx.currentTime;
+      const src = this._noise(2.4);
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 165;
+      bp.Q.value = 0.55;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 900;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      src.connect(bp).connect(lp).connect(g).connect(this.master);
+      src.start(t);
+      this.tyreNode = { src, g, bp, lp };
+    }
+    if (this.tyreNode) {
+      const t = ctx.currentTime;
+      const { g, bp, lp } = this.tyreNode;
+      const target = Math.min(0.09, level * 0.09) * (enclosed ? 1.7 : 1);
+      g.gain.cancelScheduledValues(t);
+      g.gain.setTargetAtTime(target, t, 0.35);
+      bp.frequency.setTargetAtTime(150 + level * 130, t, 0.4);
+      lp.frequency.setTargetAtTime(enclosed ? 1800 : 900, t, 0.6);
+      if (level <= 0.01) {
+        this.tyreNode.src.stop(t + 1.2);
+        this.tyreNode = null;
+      }
+    }
+  }
+
   /* Rain on the roof — filtered noise, heard through 6mm of glass. */
   setRain(on) {
     const ctx = this._ensure();
@@ -260,6 +300,7 @@ export class CabinSFX {
       this.setAmbience(false);
       this.setRain(false);
       this.setWind(0);
+      this.setTyre(0);
       this.ctx?.close();
     } catch {
       /* already closed */

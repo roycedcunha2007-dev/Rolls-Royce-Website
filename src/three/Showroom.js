@@ -6,6 +6,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { CinematicGrade } from "./showroom/CinematicGrade.js";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { LINEUP, INTERIOR_CAR_FILE } from "../data/lineup.js";
@@ -131,7 +132,17 @@ export class Showroom {
     // Luxury Bloom (subtle glow on highlights)
     this.bloom = new UnrealBloomPass(new THREE.Vector2(c.clientWidth, c.clientHeight), 0.14, 0.4, 0.88);
     this.composer.addPass(this.bloom);
+
     this.composer.addPass(new OutputPass());
+
+    // Film grade — grain, vignette, chromatic aberration, halation.
+    // Deliberately LAST, after OutputPass: these are display-referred
+    // effects. Run before tone mapping they operate on linear HDR, where a
+    // fixed grain amplitude is imperceptible in highlights and overwhelming
+    // in shadows — the night scenes came out looking like static.
+    this.grade = new CinematicGrade();
+    this.grade.setAspect(c.clientWidth, c.clientHeight);
+    this.composer.addPass(this.grade);
 
     // Initialize Modular Showroom Elements
     this.lights = new ShowroomLights(this.scene);
@@ -154,6 +165,7 @@ export class Showroom {
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
       this.composer.setSize(w, h);
+      this.grade.setAspect(w, h);
     };
     window.addEventListener("resize", this._resize);
   }
@@ -808,7 +820,8 @@ export class Showroom {
     const inUI = (e) => !!(e.target && e.target.closest && e.target.closest("button, a, input, [data-ui]"));
     this._onDown = (e) => {
       if (inUI(e)) return;
-      if (this.driveMode) return;
+      // in the pavilion the camera is on rails; on the road, dragging is free look
+      if (this.driveMode && !this.drive?.isRiding()) return;
       dragging = true;
       this._dragging = true;
       // right (or middle) button pans the viewpoint; left orbits / looks
@@ -825,6 +838,11 @@ export class Showroom {
       const dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
+      if (this.driveMode) {
+        // free look from whichever seat or rig we are riding in
+        this.drive?.setFreeLook(-dx * 0.0032, dy * 0.0022);
+        return;
+      }
       if (this.cabinMode) {
         const ex = this.explore;
         if (!ex) return;
@@ -932,6 +950,7 @@ export class Showroom {
 
       if (this.driveMode && active) {
         this.drive.update(dt, t, active);
+        this.grade.update(t);
 
         // Cinematic dolly toward the selected pavilion composition. Because
         // the view target swaps instantly but the lerp is slow, switching
@@ -945,6 +964,18 @@ export class Showroom {
           this.smoothPos.z
         );
         this.camera.lookAt(this.smoothLook);
+        // Auto-exposure. Onboard cameras stare down an unlit road away from
+        // the street lamps, so at the pavilion's exposure they render almost
+        // black. A real camera opens up for that shot; so does this one.
+        // The ease is slow enough to read as an iris adjusting.
+        const onboard = this.drive.onboardCams?.has(this.drive.rideCam);
+        const expTarget = onboard ? 2.15 : 1.02;
+        this.renderer.toneMappingExposure += (expTarget - this.renderer.toneMappingExposure) * 0.035;
+        // a windscreen is not a lens — pull the vignette back when seated
+        const vigTarget = (onboard ? 0.5 : 1) * (this.drive.modeVig ?? 0.32);
+        const uv = this.grade.uniforms.uVignette;
+        uv.value += (vigTarget - uv.value) * 0.05;
+
         // ease toward the composition's long-lens focal length
         const targetFov = v.fov || 30;
         if (Math.abs(this.camera.fov - targetFov) > 0.01) {
@@ -1169,10 +1200,13 @@ export class Showroom {
     gsap.to(this.scene, { environmentIntensity: 0.5, duration: 1.2, ease: "power2.inOut" });
   }
   setRideCam(id) { this.drive?.setRideCam(id); }
+  getRideCams() { return this.drive?.rideCams || []; }
+  resetFreeLook() { this.drive?.resetFreeLook(); }
   setCinematic(on) { this.drive?.setCinematic(on); }
   setHighBeam(on) { this.drive?.setHighBeam(on); }
   setIndicator(dir) { this.drive?.setIndicator(dir); }
   setHazards(on) { this.drive?.setHazards(on); }
+  setCabinLight(on) { this.drive?.setCabinLight(on); }
 
   /* driving mode: engine params + scene-wide grade in one motion */
   setRideMode(id) {
@@ -1181,6 +1215,7 @@ export class Showroom {
     if (this.scene.fog) gsap.to(this.scene.fog, { density: m.fog, duration: 1.2, ease: "power2.inOut" });
     gsap.to(this.bloom, { strength: m.bloom, duration: 1.2 });
     gsap.to(this.scene, { environmentIntensity: id === "night" ? 0.07 : 0.16, duration: 1.2 });
+    this.grade.applyMode(m, gsap);
   }
 
   setDrive(on) {
@@ -1190,6 +1225,10 @@ export class Showroom {
     // the atelier lives within 160m; the night city needs a real horizon
     this.camera.far = on ? 700 : 160;
     this.camera.updateProjectionMatrix();
+
+    // the film grade belongs to the ride; the atelier stays clinically clean
+    this.grade.enabled = on;
+    if (!on) this.renderer.toneMappingExposure = 1.02;
 
     // reveal / conceal the pavilion; it parks the car in perfect profile
     this.drive.setVisible(on, active);
