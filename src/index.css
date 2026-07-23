@@ -1402,70 +1402,416 @@ footer {
 @media(max-width:800px){ .pavilion-hud .engine-start{right:auto; left:50%; transform:translateX(-50%); bottom:96px} .pavilion-hud .engine-start.halt{bottom:44px} }
 
 
-/* ---- RideHUD: the Rolls-Royce instrument suite ---- */
-.ride-hud { position:fixed; inset:0; z-index:30; pointer-events:none; font-family:var(--sans); }
-.ride-hud button { pointer-events:auto; }
+/* =====================================================================
+   THE DIGITAL ATELIER — ride interface
+   One glass material, one gold, one radius scale, one motion curve.
+   Gold is reserved for state (active / live) and never used as decoration;
+   that restraint is what separates a luxury interface from a dashboard.
+   ===================================================================== */
+:root {
+  --gold:        #c9a961;
+  --gold-soft:   rgba(201, 169, 97, .16);
+  --gold-line:   rgba(201, 169, 97, .34);
 
-.cluster { position:absolute; left:4.5vw; bottom:40px; width:248px; padding:16px 18px 13px; border-radius:18px; background:rgba(8,11,16,.55); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px); box-shadow:0 24px 70px #000a; }
-.cluster .dial { display:block; width:100%; height:auto; }
-.cluster-digital { position:absolute; top:74px; left:0; right:0; text-align:center; }
-.cluster-digital b { font-family:var(--serif); font-weight:400; font-size:34px; color:var(--paper); letter-spacing:.02em; }
-.cluster-digital span { display:block; margin-top:-2px; font:8px var(--mono); letter-spacing:.3em; text-transform:uppercase; color:#9a978e; }
-.cluster-row { display:flex; justify-content:space-between; margin-top:8px; padding-top:9px; border-top:1px solid rgba(255,255,255,.09); font:8.5px var(--mono); letter-spacing:.1em; color:#c9c5ba; }
-.cluster-row span:first-child { color:var(--accent, var(--warm)); }
-.cluster-note { margin:7px 0 0; text-align:center; font:8px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:#8e8b82; }
+  --pane:        rgba(10, 12, 17, .58);
+  --pane-solid:  rgba(9, 11, 15, .84);
+  --hair:        rgba(255, 255, 255, .085);
+  --hair-strong: rgba(255, 255, 255, .16);
+  --edge:        inset 0 1px 0 rgba(255, 255, 255, .10);
+  --lift:        0 24px 60px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
 
-.mode-dock { position:absolute; left:50%; bottom:40px; transform:translateX(-50%); display:flex; gap:3px; padding:5px; border-radius:999px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(20px); box-shadow:0 18px 55px #0009; }
-.mode-dock button { background:transparent; border:0; color:#c3c0b6; padding:11px 17px; border-radius:999px; cursor:pointer; font-size:8.6px; letter-spacing:.2em; text-transform:uppercase; transition:color .5s, background .5s; white-space:nowrap; }
-.mode-dock button:hover { color:var(--paper); }
-.mode-dock button.is-active { color:#14120c; background:var(--accent, #d8b878); box-shadow:0 6px 20px rgba(216,184,120,.3); }
+  --txt:         rgba(255, 255, 255, .92);
+  --txt-dim:     rgba(255, 255, 255, .52);
+  --txt-faint:   rgba(255, 255, 255, .34);
 
-.cam-dock { position:absolute; right:4.5vw; bottom:40px; display:flex; flex-direction:column; gap:7px; padding:9px 10px; border-radius:16px; background:rgba(10,14,20,.5); border:1px solid rgba(216,194,156,.2); backdrop-filter:blur(20px); box-shadow:0 18px 55px #0009; }
-.cam-dock button { background:transparent; border:0; color:#bfbcb2; padding:9px 13px; border-radius:10px; cursor:pointer; font-size:8.4px; letter-spacing:.16em; text-transform:uppercase; transition:color .4s, background .4s; }
-.cam-dock button:hover { color:var(--paper); background:#ffffff0c; }
-.cam-dock button.is-active { color:#14120c; background:var(--accent, #d8b878); }
-.cam-dock button.wide { grid-column:span 1; }
+  --r-lg: 22px;
+  --r-md: 14px;
+  --r-sm: 10px;
 
-.ctrl-dock { position:absolute; top:96px; right:4.5vw; display:flex; flex-direction:column; gap:3px; padding:6px; border-radius:16px; background:rgba(10,14,20,.46); border:1px solid rgba(216,194,156,.16); backdrop-filter:blur(18px); box-shadow:0 18px 55px #0008; }
-.ctrl-dock button { background:transparent; border:0; color:#bfbcb2; padding:9px 14px; border-radius:10px; cursor:pointer; font-size:8.4px; letter-spacing:.16em; text-transform:uppercase; text-align:left; transition:color .4s, background .4s; white-space:nowrap; }
-.ctrl-dock button:hover { color:var(--paper); background:#ffffff0c; }
-.ctrl-dock button.is-live { color:var(--accent, #d8b878); background:rgba(216,184,120,.1); }
-.ctrl-dock button.halt { margin-top:5px; border-top:1px solid rgba(255,255,255,.1); border-radius:0 0 10px 10px; color:#e8e2d4; }
-.ctrl-dock button.halt:hover { color:var(--warm); }
-
-.ride-hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); margin:0; font:8px var(--mono); letter-spacing:.26em; text-transform:uppercase; color:#7d7a72; }
-
-/* photo mode: pure cinema */
-.ride-hud.photo .letterbox { position:absolute; left:0; right:0; height:9vh; background:#000; }
-.ride-hud.photo .letterbox.top { top:0; }
-.ride-hud.photo .letterbox.bottom { bottom:0; }
-.photo-exit { position:absolute; bottom:2.6vh; left:50%; transform:translateX(-50%); background:transparent; border:1px solid rgba(255,255,255,.25); border-radius:999px; color:#cfccc2; padding:9px 20px; font-size:8.5px; letter-spacing:.24em; text-transform:uppercase; cursor:pointer; transition:.4s; }
-.photo-exit:hover { color:var(--warm); border-color:var(--warm); }
-
-@media(max-width:900px){
-  .cluster{ left:12px; bottom:150px; width:172px; padding:12px 13px 10px; }
-  .cluster-digital{ top:52px; } .cluster-digital b{ font-size:25px; }
-  .mode-dock{ bottom:96px; max-width:96vw; overflow-x:auto; }
-  .cam-dock{ right:12px; bottom:150px; grid-template-columns:1fr; padding:4px; }
-  .ctrl-dock{ top:84px; right:12px; }
-  .ride-hint{ display:none; }
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --fast: .28s var(--ease);
 }
 
+@keyframes rrRise   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes rrSlideL { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes rrFlyIn  { from { opacity: 0; transform: translateY(-50%) translateX(16px); } to { opacity: 1; transform: translateY(-50%); } }
+@keyframes rrRiseCx { from { opacity: 0; transform: translateX(-50%) translateY(14px); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes rrSlideCy{ from { opacity: 0; transform: translateY(-50%) translateX(18px); } to { opacity: 1; transform: translateY(-50%); } }
+@keyframes rrRipple { to { transform: translate(-50%, -50%) scale(11); opacity: 0; } }
 
-/* ---- RideHUD additions: grouped camera rig, sub telemetry, tunnel flag ---- */
-.cluster-row.sub { margin-top:5px; padding-top:6px; border-top:1px solid rgba(255,255,255,.055); font-size:7.6px; color:#94918a; }
-.cluster-row.sub span:first-child { color:#b6b2a8; }
+.ride-hud { position: fixed; inset: 0; z-index: 30; pointer-events: none; font-family: var(--sans); }
+.ride-hud button { pointer-events: auto; }
 
-.cam-group-label { margin:0 0 4px 3px; font:7.4px var(--mono); letter-spacing:.26em; text-transform:uppercase; color:#7f7c74; }
-.cam-grid { display:grid; grid-template-columns:1fr 1fr; gap:3px; }
-.cam-actions { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding-top:7px; border-top:1px solid rgba(255,255,255,.08); }
-.cam-dock .cam-actions button { letter-spacing:.18em; }
+/* ---- pressable base: hover glow, gold edge, gentle lift, click ripple ---- */
+.rr-press {
+  position: relative; overflow: hidden; cursor: pointer;
+  background: transparent; border: 0; color: var(--txt-dim);
+  font-family: var(--sans); -webkit-tap-highlight-color: transparent;
+  transition: color var(--fast), background var(--fast), box-shadow var(--fast), transform var(--fast), border-color var(--fast);
+}
+.rr-press:hover { color: var(--txt); }
+.rr-press:active { transform: scale(.975); }
+.rr-press:focus-visible { outline: 1px solid var(--gold-line); outline-offset: 2px; }
+.rr-ripple {
+  position: absolute; width: 12px; height: 12px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,169,97,.5), transparent 70%);
+  transform: translate(-50%, -50%) scale(0); pointer-events: none;
+  animation: rrRipple .62s var(--ease) forwards;
+}
 
-.ride-flag { position:absolute; top:22px; left:50%; transform:translateX(-50%); margin:0; padding:6px 16px; border-radius:999px; background:rgba(255,180,87,.12); border:1px solid rgba(255,180,87,.34); font:8px var(--mono); letter-spacing:.3em; text-transform:uppercase; color:#ffb457; }
+/* ===================== INSTRUMENT CLUSTER ===================== */
+.rr-cluster {
+  position: absolute; left: 40px; bottom: 40px; width: 296px;
+  padding: 22px 22px 18px;
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,0) 42%),
+    var(--pane);
+  border: 1px solid var(--hair);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(26px) saturate(1.15);
+  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  opacity: 0; animation: rrRise .8s var(--ease) forwards;
+}
+.rr-dial { position: relative; }
+.rr-dial svg { display: block; width: 100%; height: auto; }
+.rr-num { fill: rgba(255,255,255,.4); font: 400 10px var(--sans); letter-spacing: .06em; }
+.rr-monogram { fill: rgba(201,169,97,.5); font: 500 13px var(--serif); letter-spacing: .12em; }
 
-@media(max-width:900px){
-  .cam-dock{ gap:4px; padding:6px; }
-  .cam-group-label{ display:none; }
-  .cam-grid{ grid-template-columns:1fr 1fr; }
-  .cluster-row.sub{ display:none; }
+.rr-readout {
+  position: absolute; left: 0; right: 0; top: 52%; transform: translateY(-50%);
+  text-align: center; pointer-events: none;
+}
+.rr-readout b {
+  display: block; font-family: var(--serif); font-weight: 400;
+  font-size: 52px; line-height: .92; color: #fff;
+  letter-spacing: .01em; text-shadow: 0 2px 26px rgba(0,0,0,.7);
+  font-variant-numeric: tabular-nums;
+}
+.rr-readout span {
+  display: block; margin-top: 4px;
+  font: 400 8.5px var(--sans); letter-spacing: .34em; text-transform: uppercase; color: var(--txt-faint);
+}
+
+.rr-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair);
+}
+.rr-stats div { text-align: center; }
+.rr-stats b {
+  display: block; font: 500 12.5px var(--sans); color: var(--txt);
+  letter-spacing: .02em; font-variant-numeric: tabular-nums;
+}
+.rr-stats span {
+  display: block; margin-top: 3px;
+  font: 400 7.5px var(--sans); letter-spacing: .24em; text-transform: uppercase; color: var(--txt-faint);
+}
+
+.rr-sub {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair);
+}
+.rr-sub p { margin: 0; font: 400 7.5px var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--txt-faint); }
+.rr-sub b { display: block; margin-bottom: 2px; font: 500 12px var(--sans); letter-spacing: 0; color: var(--txt); text-transform: none; font-variant-numeric: tabular-nums; }
+.rr-sub i { width: 1px; height: 20px; background: var(--hair); }
+
+.rr-reserve { display: flex; align-items: center; gap: 9px; margin-top: 14px; }
+.rr-reserve span { font: 400 7.5px var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--txt-faint); white-space: nowrap; }
+.rr-reserve b { font: 500 10px var(--sans); color: var(--gold); font-variant-numeric: tabular-nums; }
+.rr-bar { flex: 1; height: 2px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; }
+.rr-bar i {
+  display: block; height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, rgba(201,169,97,.45), var(--gold));
+  transition: width .3s linear;
+}
+
+/* ===================== CONTROL RAIL ===================== */
+.rr-rail {
+  position: absolute; right: 40px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 8px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(200deg, rgba(255,255,255,.04), rgba(255,255,255,0) 46%), var(--pane);
+  border: 1px solid var(--hair);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(26px) saturate(1.15);
+  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+}
+.rail-item {
+  display: flex; align-items: center; gap: 13px;
+  width: 100%; padding: 11px 15px 11px 13px;
+  border-radius: var(--r-md);
+  font-size: 8.6px; letter-spacing: .22em; text-transform: uppercase; white-space: nowrap;
+  opacity: 0; animation: rrSlideL .7s var(--ease) forwards;
+}
+.rail-item svg { flex: none; opacity: .72; transition: opacity var(--fast), transform var(--fast); }
+.rail-item:hover { background: rgba(255,255,255,.05); }
+.rail-item:hover svg { opacity: 1; transform: translateX(-1px); }
+.rail-item.live { color: var(--gold); }
+.rail-item.live svg { opacity: 1; }
+.rail-item.open {
+  color: #12100a; background: linear-gradient(180deg, #d9bd7c, var(--gold));
+  box-shadow: 0 6px 20px rgba(201,169,97,.28);
+}
+.rail-item.open svg { opacity: 1; }
+
+/* ---- flyout: opens beside the rail, never over the car's centre ---- */
+.rr-flyout {
+  position: absolute; right: 152px; top: 50%; transform: translateY(-50%);
+  width: 306px; max-height: min(74vh, 560px); overflow-y: auto; pointer-events: auto;
+  border-radius: var(--r-lg);
+  background: linear-gradient(170deg, rgba(255,255,255,.05), rgba(255,255,255,0) 40%), var(--pane-solid);
+  border: 1px solid var(--hair);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(30px) saturate(1.2);
+  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  animation: rrFlyIn .42s var(--ease) both;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent;
+}
+.rr-flyout::-webkit-scrollbar { width: 3px; }
+.rr-flyout::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 3px; }
+.rr-flyout header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 17px 18px 13px; border-bottom: 1px solid var(--hair);
+}
+.rr-flyout header p { margin: 0; font-family: var(--serif); font-size: 17px; font-weight: 400; letter-spacing: .05em; color: var(--txt); }
+.fly-close {
+  background: transparent; border: 0; color: var(--txt-faint); cursor: pointer;
+  font-size: 19px; line-height: 1; padding: 2px 5px; border-radius: 50%;
+  transition: color var(--fast), background var(--fast);
+}
+.fly-close:hover { color: var(--txt); background: rgba(255,255,255,.07); }
+.fly-body { padding: 14px 18px 18px; }
+
+.fly-label { margin: 14px 0 8px; font: 400 7.5px var(--sans); letter-spacing: .28em; text-transform: uppercase; color: var(--txt-faint); }
+.fly-body > *:first-child .fly-label:first-child,
+.fly-body > .fly-label:first-child { margin-top: 2px; }
+.fly-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fly-cell {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 11px 12px; border-radius: var(--r-sm); text-align: left;
+  background: rgba(255,255,255,.035); border: 1px solid transparent;
+}
+.fly-cell.tight { padding: 10px 12px; }
+.fly-cell span { font-size: 10.5px; letter-spacing: .03em; color: var(--txt); transition: color var(--fast); }
+.fly-cell em {
+  font-style: normal; font-size: 7.5px; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--txt-faint); transition: color var(--fast);
+}
+.fly-cell:hover { background: rgba(255,255,255,.07); border-color: var(--hair-strong); }
+.fly-cell.on { background: var(--gold-soft); border-color: var(--gold-line); }
+.fly-cell.on span, .fly-cell.on em { color: var(--gold); }
+.fly-cell.wide { grid-column: 1 / -1; }
+.fly-cell.halt { margin-top: 4px; }
+.fly-note { margin: 14px 0 0; font-size: 10px; line-height: 1.65; color: var(--txt-faint); letter-spacing: .015em; }
+
+.fly-keys { margin: 0; display: grid; gap: 6px; }
+.fly-keys div { display: flex; align-items: center; gap: 11px; }
+.fly-keys dt {
+  min-width: 46px; padding: 5px 8px; border-radius: 6px; text-align: center;
+  background: rgba(255,255,255,.05); border: 1px solid var(--hair);
+  font: 400 8.5px var(--mono); letter-spacing: .1em; color: var(--txt);
+}
+.fly-keys dd { margin: 0; font-size: 10px; letter-spacing: .04em; color: var(--txt-dim); }
+
+/* ===================== DRIVING MODES ===================== */
+.rr-modes {
+  position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%);
+  display: flex; gap: 2px; padding: 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 55%), var(--pane);
+  border: 1px solid var(--hair);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(26px) saturate(1.15);
+  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  opacity: 0; animation: rrRiseCx .8s var(--ease) forwards;
+}
+.rr-modes button {
+  padding: 12px 22px; border-radius: 999px;
+  font-size: 8.6px; letter-spacing: .24em; text-transform: uppercase; white-space: nowrap;
+}
+.rr-modes button:hover { background: rgba(255,255,255,.05); }
+.rr-modes button.on {
+  color: #12100a; background: linear-gradient(180deg, #dcc084, var(--gold));
+  box-shadow: 0 6px 22px rgba(201,169,97,.3), inset 0 1px 0 rgba(255,255,255,.35);
+}
+
+/* ===================== QUICK ACTIONS ===================== */
+.rr-quick {
+  position: absolute; right: 40px; bottom: 46px; display: flex; gap: 9px;
+  opacity: 0; animation: rrRise .8s var(--ease) forwards;
+}
+.rr-quick button {
+  display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 60%), var(--pane);
+  border: 1px solid var(--hair);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+.rr-quick button:hover { border-color: var(--hair-strong); transform: translateY(-2px); }
+.rr-quick button.on { color: var(--gold); border-color: var(--gold-line); background: var(--gold-soft); }
+
+/* ===================== STATUS ===================== */
+.rr-flag {
+  position: absolute; top: 104px; left: 50%; transform: translateX(-50%); margin: 0;
+  padding: 7px 18px; border-radius: 999px;
+  background: rgba(201,169,97,.1); border: 1px solid var(--gold-line);
+  font: 400 7.5px var(--sans); letter-spacing: .34em; text-transform: uppercase; color: var(--gold);
+  animation: rrRiseCx .5s var(--ease);
+}
+.rr-hint {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); margin: 0;
+  font: 400 7.5px var(--sans); letter-spacing: .3em; text-transform: uppercase; color: var(--txt-faint);
+  opacity: 0; animation: rrRiseCx 1s var(--ease) .5s forwards;
+}
+
+/* ===================== PHOTO MODE ===================== */
+.ride-hud.photo .letterbox { position: absolute; left: 0; right: 0; height: 9vh; background: #000; animation: rrRise .6s var(--ease); }
+.ride-hud.photo .letterbox.top { top: 0; }
+.ride-hud.photo .letterbox.bottom { bottom: 0; }
+.photo-readout {
+  position: absolute; left: 50%; bottom: 12.5vh; transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: 12px; color: var(--txt);
+}
+.photo-readout b { font-family: var(--serif); font-weight: 400; font-size: 34px; font-variant-numeric: tabular-nums; }
+.photo-readout span { font: 400 8px var(--sans); letter-spacing: .3em; text-transform: uppercase; color: var(--txt-faint); }
+.photo-readout i { width: 1px; height: 16px; background: var(--hair-strong); align-self: center; }
+.photo-readout em { font-style: normal; font: 400 8px var(--sans); letter-spacing: .3em; text-transform: uppercase; color: var(--gold); }
+.photo-exit {
+  position: absolute; bottom: 3.2vh; left: 50%; transform: translateX(-50%);
+  border: 1px solid var(--hair-strong) !important; border-radius: 999px;
+  padding: 11px 26px; font-size: 8px; letter-spacing: .28em; text-transform: uppercase;
+  background: rgba(0,0,0,.4);
+}
+.photo-exit:hover { color: var(--gold); border-color: var(--gold-line) !important; }
+
+/* ===================== RESPONSIVE ===================== */
+@media (max-width: 1280px) {
+  .rr-cluster { left: 24px; bottom: 24px; width: 258px; padding: 18px 18px 15px; }
+  .rr-readout b { font-size: 44px; }
+  .rr-rail { right: 24px; }
+  .rr-flyout { right: 130px; width: 282px; }
+  .rr-quick { right: 24px; bottom: 30px; }
+  .rr-modes { bottom: 30px; }
+}
+@media (max-width: 900px) {
+  .rr-cluster { left: 12px; bottom: 148px; width: 190px; padding: 14px 14px 12px; }
+  .rr-readout b { font-size: 34px; }
+  .rr-stats { grid-template-columns: repeat(2, 1fr); gap: 8px 4px; }
+  .rr-sub { display: none; }
+  .rr-rail { top: auto; bottom: 148px; right: 12px; transform: none; padding: 6px; }
+  .rail-item { padding: 10px; gap: 0; }
+  .rail-item span { display: none; }
+  .rr-flyout { right: 12px; left: 12px; width: auto; top: auto; bottom: 210px; transform: none; max-height: 46vh; }
+  .rr-modes { bottom: 84px; max-width: 96vw; overflow-x: auto; scrollbar-width: none; }
+  .rr-modes::-webkit-scrollbar { display: none; }
+  .rr-modes button { padding: 11px 15px; }
+  .rr-quick { right: 12px; bottom: 26px; }
+  .rr-quick button { width: 40px; height: 40px; }
+  .rr-hint { display: none; }
+}
+
+/* =====================================================================
+   TOPBAR + CLUSTER REFINEMENTS (V2)
+   Overrides the earlier topbar rules. Same markup, same buttons, same
+   behaviour — only the finish changes: one glass material shared with the
+   ride interface, the gold reserved for the active model, and a monogram
+   badge so the marque reads before the wordmark does.
+   ===================================================================== */
+.topbar {
+  padding: 26px 40px;
+  background: linear-gradient(180deg, rgba(5, 7, 10, .78) 0%, rgba(5, 7, 10, .3) 55%, transparent 100%);
+  gap: 24px;
+}
+
+/* the marque: monogram badge + wordmark, as a single quiet unit */
+.brand {
+  display: flex; align-items: center; gap: 15px;
+  padding: 0; border-radius: var(--r-md);
+  transition: opacity var(--fast);
+}
+.brand:hover { opacity: .78; }
+.brand::before {
+  content: "RR";
+  display: grid; place-items: center;
+  width: 46px; height: 46px; flex: none;
+  border-radius: var(--r-md);
+  background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,0) 55%), var(--pane);
+  border: 1px solid var(--hair);
+  box-shadow: var(--edge), 0 8px 24px rgba(0,0,0,.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  font-family: var(--serif); font-size: 17px; font-weight: 500;
+  letter-spacing: .04em; color: var(--gold);
+}
+.brand b {
+  font-family: var(--serif); font-weight: 400;
+  font-size: 19px; letter-spacing: .3em; color: var(--txt);
+  text-shadow: 0 2px 14px rgba(0,0,0,.6);
+}
+.brand span {
+  font-size: 7.5px; letter-spacing: .32em; margin-top: 5px;
+  font-weight: 400; color: var(--txt-faint);
+}
+
+/* model pill — same glass as the ride docks */
+.model-nav {
+  gap: 2px; padding: 6px;
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 55%), var(--pane);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(26px) saturate(1.15);
+  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+}
+.model-nav button {
+  padding: 11px 21px; font-size: 8.6px; font-weight: 400;
+  letter-spacing: .24em; color: var(--txt-dim);
+  transition: color var(--fast), background var(--fast), box-shadow var(--fast);
+}
+.model-nav button:hover { color: var(--txt); background: rgba(255,255,255,.05); }
+.model-nav .current {
+  color: #12100a !important;
+  background: linear-gradient(180deg, #dcc084, var(--gold)) !important;
+  box-shadow: 0 6px 22px rgba(201,169,97,.3), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.model-nav button:disabled { opacity: .4; cursor: default; }
+
+/* right-hand actions as matching glass pills */
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.header-actions .text-button,
+.header-actions .drive-button {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 24px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 55%), var(--pane);
+  box-shadow: var(--lift), var(--edge);
+  backdrop-filter: blur(26px) saturate(1.15);
+  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  color: var(--txt-dim);
+  font-family: var(--sans); font-size: 8.6px; font-weight: 400;
+  letter-spacing: .24em; text-transform: uppercase; white-space: nowrap;
+  transition: color var(--fast), border-color var(--fast), transform var(--fast), box-shadow var(--fast);
+}
+.header-actions .text-button:hover,
+.header-actions .drive-button:hover {
+  color: var(--txt); border-color: var(--hair-strong); transform: translateY(-1px);
+}
+.header-actions .drive-button.live {
+  color: var(--gold); border-color: var(--gold-line); background: var(--gold-soft);
+}
+.header-actions .arrow { font-size: 10px; opacity: .6; }
+
+/* ---- cluster must not dominate a short viewport ---- */
+@media (max-height: 820px) {
+  .rr-cluster { width: 248px; padding: 16px 16px 13px; bottom: 30px; }
+  .rr-dial svg { max-width: 178px; margin: 0 auto; }
+  .rr-readout b { font-size: 40px; }
+  .rr-stats { margin-top: 10px; padding-top: 10px; }
+  .rr-sub { margin-top: 9px; padding-top: 9px; }
+  .rr-reserve { margin-top: 10px; }
+}
+@media (max-height: 700px) {
+  .rr-cluster { width: 214px; }
+  .rr-readout b { font-size: 34px; }
+  .rr-sub { display: none; }
 }

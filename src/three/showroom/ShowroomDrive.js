@@ -585,6 +585,7 @@ export class ShowroomDrive {
       streak.rotation.x = -Math.PI / 2;
       streak.rotation.z = Math.PI;
       streak.position.set(-side * 1.75, 0.012, 2.6);
+      (this.lampStreaks = this.lampStreaks || []).push(streak);
       g.add(pole, arm, head, gs, streak);
       g.position.set(side * 10.2, 0, 0);
       g.userData.side = side;
@@ -632,8 +633,41 @@ export class ShowroomDrive {
       t.position.set(dx, 0.72, 2.3);
       this.leader.add(t);
     }
+    // the leader's tail lamps bleed red down the wet lane behind it
+    const leadSmear = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.9, 11),
+      new THREE.MeshBasicMaterial({
+        map: this._streakTex(), transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, color: 0xff3a26, opacity: 0.26,
+      })
+    );
+    leadSmear.rotation.x = -Math.PI / 2;
+    leadSmear.position.set(0, 0.014, 7.5);
+    this.leader.add(leadSmear);
+
     this.leader.position.set(LANE_X, 0, -130);
     this.ride.add(this.leader);
+
+    // ---- standing water: shallow pools that catch the city ----
+    // Kept to the lane edges and the crown of the camber, where water
+    // actually stands, so they read as road condition rather than decals.
+    this.puddles = [];
+    this._ridePool(this.puddles, 14, (i) => {
+      const w = 1.6 + Math.random() * 3.4;
+      const p = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 20),
+        new THREE.MeshStandardMaterial({
+          color: 0x0a1018, roughness: 0.06, metalness: 0.85,
+          envMapIntensity: 1.6, transparent: true, opacity: 0.5,
+        })
+      );
+      p.rotation.x = -Math.PI / 2;
+      p.scale.set(w, 1, w * (1.6 + Math.random()));
+      p.position.set((Math.random() - 0.5) * 15, 0.008, 0);
+      p.userData.side = 1;
+      p.renderOrder = 1;
+      return p;
+    });
 
     // ---- set pieces on a long cycle: a tunnel, then a bridge ----
     this._buildTunnel();
@@ -868,6 +902,20 @@ export class ShowroomDrive {
     const pl = new THREE.PointLight(0xfff0d8, 9, 15, 2);
     pl.position.set(0, 0.7, len / 2 + 0.3);
     c.add(pl);
+
+    // wet-road smear thrown ahead of the oncoming car — the single detail
+    // that sells rain-slicked asphalt is a light source with a reflection
+    // stretched along the direction of view, not a pool under it
+    const smear = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 15),
+      new THREE.MeshBasicMaterial({
+        map: this._streakTex(), transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, color: 0xdce8ff, opacity: 0.3,
+      })
+    );
+    smear.rotation.x = -Math.PI / 2;
+    smear.position.set(0, 0.014, len / 2 + 7);
+    c.add(smear);
 
     c.position.set(ONCOMING_X + (i % 2) * 2.1, 0, -80 - i * 90);
     c.userData.speed = 26 + Math.random() * 10;
@@ -1243,6 +1291,17 @@ export class ShowroomDrive {
     this.mode = id;
     const m = RIDE_MODES[id];
     this.modeVig = m.vig;      // the render loop blends toward this
+
+    // Wetness: the boulevard is always damp (that is the whole look), and
+    // Rain floods it. Puddles deepen and every light smear lengthens.
+    const wet = m.rain ? 1 : 0.6;
+    for (const p of this.puddles || []) {
+      gsap.to(p.material, { opacity: 0.26 + wet * 0.34, duration: 1.2, ease: "power2.inOut" });
+    }
+    for (const s of this.lampStreaks || []) {
+      gsap.to(s.material, { opacity: 0.2 + wet * 0.26, duration: 1.2 });
+      gsap.to(s.scale, { y: 0.8 + wet * 0.7, duration: 1.2, ease: "power2.inOut" });
+    }
     this.rain.visible = m.rain && this.phase === "riding";
     // city dimming + lamp brightness
     for (const mat of this.rideTowerMats) gsap.to(mat, { emissiveIntensity: (0.85 + 0.2) * m.cityDim, duration: 1.2 });
@@ -1513,6 +1572,7 @@ export class ShowroomDrive {
     };
     for (const tw of this.rideTowers) recycle(tw, this.rideTowers, 16 + Math.random() * 6);
     for (const p of this.railPosts) recycle(p, this.railPosts, 16);
+    for (const p of this.puddles) recycle(p, this.puddles, 26 + Math.random() * 34);
 
     // street lamps recycle, then ignite: a lamp that comes back into the
     // world warms up over half a second instead of popping on, which reads
