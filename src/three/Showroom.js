@@ -956,14 +956,49 @@ export class Showroom {
         // the view target swaps instantly but the lerp is slow, switching
         // views reads as a smooth luxury-film camera move.
         const v = this.drive.getViewTarget();
-        this.smoothPos.lerp(v.pos, 0.05);
-        this.smoothLook.lerp(v.look, 0.06);
+
+        /*
+         * Camera suspension.
+         *
+         * A lerp is a rubber band: it always decelerates into the target and
+         * never overshoots, which is why the old camera felt weightless. A
+         * critically-damped-ish spring carries momentum — it leans into a
+         * change and settles back through it, the way a heavy body on soft
+         * springs actually moves. Onboard cameras are bolted to the car and
+         * so run much stiffer than the cinematic rigs, which float.
+         */
+        if (!this._camVel) { this._camVel = new THREE.Vector3(); this._camAcc = new THREE.Vector3(); }
+        const onboardCam = this.drive.onboardCams?.has(this.drive.rideCam);
+        const stiff = onboardCam ? 118 : 26;
+        const damp = onboardCam ? 19 : 9.2;
+        const h = Math.min(dt, 1 / 30);          // never integrate a long frame
+        // a = k·(target − x) − c·v
+        this._camAcc.copy(v.pos).sub(this.smoothPos).multiplyScalar(stiff)
+          .addScaledVector(this._camVel, -damp);
+        this._camVel.addScaledVector(this._camAcc, h);
+        this.smoothPos.addScaledVector(this._camVel, h);
+        // the aim point stays smooth — a springy look-at reads as nausea
+        this.smoothLook.lerp(v.look, 1 - Math.pow(0.001, h));
+
+        /*
+         * Road vibration. Real texture, not a wobble: a fast component for
+         * the coarse chip in the asphalt, a slow one for the body of the car
+         * breathing on its air springs. Both scale with speed, and both are
+         * an order of magnitude stronger from a seat than from a drone.
+         */
+        const spd = this.drive.speed || 0;
+        const shake = (spd / 160) * (onboardCam ? 0.028 : 0.006);
+        const jx = (Math.sin(t * 47.3) + Math.sin(t * 31.1) * 0.6) * shake;
+        const jy = (Math.sin(t * 39.7) + Math.sin(t * 23.9) * 0.7) * shake;
+
         this.camera.position.set(
-          this.smoothPos.x + this.mouse.x * 0.14,
-          this.smoothPos.y - this.mouse.y * 0.06,
+          this.smoothPos.x + this.mouse.x * 0.14 + jx,
+          this.smoothPos.y - this.mouse.y * 0.06 + jy,
           this.smoothPos.z
         );
         this.camera.lookAt(this.smoothLook);
+        // steering rolls the camera fractionally, as a head does in a corner
+        this.camera.rotation.z += -this.drive.input.steer * 0.012 + jx * 0.4;
         // Auto-exposure. Onboard cameras stare down an unlit road away from
         // the street lamps, so at the pavilion's exposure they render almost
         // black. A real camera opens up for that shot; so does this one.

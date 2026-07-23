@@ -123,25 +123,54 @@ export class ShowroomDrive {
     const dome = new THREE.Mesh(
       new THREE.SphereGeometry(220, 48, 32),
       new THREE.ShaderMaterial({
-        side: THREE.BackSide, depthWrite: false, fog: false, uniforms: {},
+        side: THREE.BackSide, depthWrite: false, fog: false,
+        uniforms: { uTime: { value: 0 } },
         vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
         fragmentShader: `
           varying vec3 vP;
+          uniform float uTime;
+
+          // value noise, for cloud banks
+          float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float noise(vec2 p){
+            vec2 i = floor(p), f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),
+                       mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+          }
+          float fbm(vec2 p){
+            float v = 0.0, a = 0.5;
+            for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.02; a *= 0.5; }
+            return v;
+          }
+
           void main(){
             vec3 d = normalize(vP);
             float h = clamp(d.y, 0.0, 1.0);
-            vec3 horizon = vec3(0.045, 0.075, 0.115);
-            vec3 zenith  = vec3(0.004, 0.010, 0.022);
-            vec3 col = mix(horizon, zenith, pow(h, 0.55));
-            // warm city-glow band hugging the skyline
-            col += vec3(0.14, 0.09, 0.045) * exp(-pow(max(d.y, 0.0) * 9.5, 1.4));
-            float band = exp(-pow((d.y - d.x * 0.5) * 3.2, 2.0)) * smoothstep(0.03, 0.5, h);
-            col += vec3(0.09, 0.10, 0.15) * band * 0.2;
+
+            // A night sky is nearly black overhead. The old values were three
+            // times too bright, which is what made the city read as daylight
+            // blue behind cardboard buildings.
+            vec3 horizon = vec3(0.020, 0.032, 0.055);
+            vec3 zenith  = vec3(0.002, 0.004, 0.010);
+            vec3 col = mix(horizon, zenith, pow(h, 0.42));
+
+            // sodium glow bleeding off the city, tight to the skyline
+            col += vec3(0.115, 0.068, 0.030) * exp(-pow(max(d.y, 0.0) * 13.0, 1.25));
+
+            // cloud banks lit from beneath by the city, thinning with altitude
+            vec2 cp = d.xz / max(d.y + 0.30, 0.12);
+            float cl = fbm(cp * 1.5 + vec2(uTime * 0.004, uTime * 0.002));
+            cl = smoothstep(0.48, 0.92, cl) * smoothstep(0.0, 0.30, h) * (1.0 - h * 0.55);
+            vec3 cloudCol = mix(vec3(0.075, 0.082, 0.105), vec3(0.16, 0.115, 0.075), exp(-h * 5.0));
+            col = mix(col, cloudCol, cl * 0.85);
+
             gl_FragColor = vec4(col, 1.0);
           }`,
       })
     );
     dome.renderOrder = -2;
+    this.skyMat = dome.material;
     this.group.add(dome);
 
     // stars
@@ -316,29 +345,88 @@ export class ShowroomDrive {
     this.pavilion.add(wall);
   }
 
-  /* facade textures — varied window patterns, warm/cool mix, lit bands */
+  /*
+   * Facade textures.
+   *
+   * A real tower at night is mostly DARK. What makes it read as architecture
+   * rather than a lit grid is structure: floor slabs, vertical mullions, and
+   * light that clusters — whole floors still working, a scatter of late
+   * offices, blinds half drawn. Uniform dots at even spacing is the single
+   * thing that made the old city look like vector art, so the light here is
+   * clustered per floor and per bay, never independent per window.
+   *
+   * Rendered at 256x512 (4x the old resolution) so mullions survive at the
+   * near towers instead of aliasing into mush.
+   */
   _facadeTex(style = 0) {
-    const wc = document.createElement("canvas");
-    wc.width = 64; wc.height = 160;
-    const wg = wc.getContext("2d");
-    wg.fillStyle = "#04060b";
-    wg.fillRect(0, 0, 64, 160);
-    const density = [0.42, 0.3, 0.55, 0.22][style % 4];
-    for (let y = 4; y < 160; y += style % 2 ? 5 : 7) {
-      const floorLit = Math.random() < 0.85;
-      for (let x = 3; x < 64; x += style % 3 ? 6 : 9) {
-        if (floorLit && Math.random() < density) {
-          const warm = Math.random() < 0.8;
-          const v = 190 + Math.random() * 65;
-          wg.fillStyle = warm
-            ? `rgba(${v}, ${v * 0.8}, ${v * 0.52}, ${0.45 + Math.random() * 0.55})`
-            : `rgba(${v * 0.75}, ${v * 0.85}, ${v}, ${0.4 + Math.random() * 0.5})`;
-          wg.fillRect(x, y, style % 3 ? 3.4 : 5.5, 3.0);
+    const W = 256, H = 512;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+
+    // dark glass curtain wall
+    g.fillStyle = "#05070c";
+    g.fillRect(0, 0, W, H);
+
+    const floorH = [13, 16, 11, 20][style % 4];   // storey height in px
+    const bayW = [11, 14, 9, 17][style % 4];      // window bay width
+    const litFloor = [0.34, 0.22, 0.46, 0.16][style % 4];
+
+    // structural grid first — this is what the eye reads as "a building"
+    g.fillStyle = "rgba(150,168,190,0.05)";
+    for (let y = 0; y < H; y += floorH) g.fillRect(0, y, W, 1);       // slabs
+    for (let x = 0; x < W; x += bayW) g.fillRect(x, 0, 1, H);         // mullions
+
+    for (let y = 2, row = 0; y < H - 2; y += floorH, row++) {
+      // whole floors switch on together; between them, scattered rooms
+      const wholeFloor = Math.random() < litFloor;
+      const floorWarm = Math.random() < 0.78;
+      // a run of adjacent bays lit together reads as one open-plan office
+      let run = 0, runWarm = floorWarm, runV = 0;
+
+      for (let x = 2, bay = 0; x < W - 2; x += bayW, bay++) {
+        let lit = wholeFloor;
+        if (run > 0) { lit = true; run--; }
+        else if (!wholeFloor && Math.random() < 0.1) {
+          run = 1 + Math.floor(Math.random() * 3);
+          runWarm = Math.random() < 0.8;
+          runV = 150 + Math.random() * 90;
+          lit = true;
+        }
+        if (!lit) continue;
+
+        const warm = run > 0 ? runWarm : floorWarm;
+        const v = run > 0 ? runV : 160 + Math.random() * 95;
+        // vertical falloff: lower floors sit in the shadow of neighbours
+        const depth = 0.45 + 0.55 * (y / H);
+        const a = (0.5 + Math.random() * 0.5) * depth;
+
+        // Office light is tungsten or cool fluorescent — amber-white or
+        // blue-white. Saturated colour here turns the skyline into confetti,
+        // and the grade's chromatic aberration then fringes every window.
+        g.fillStyle = warm
+          ? `rgba(${v}, ${v * 0.84}, ${v * 0.64}, ${a})`
+          : `rgba(${v * 0.86}, ${v * 0.93}, ${v}, ${a * 0.8})`;
+        g.fillRect(x, y, bayW - 2.5, floorH - 3.5);
+
+        // a brighter core so the window has a hot centre, not a flat fill
+        if (Math.random() < 0.4) {
+          g.fillStyle = warm ? `rgba(255,240,214,${a * 0.45})` : `rgba(236,244,255,${a * 0.4})`;
+          g.fillRect(x + 1, y + 1, bayW - 5, Math.max(1.5, floorH - 7));
         }
       }
     }
-    const t = new THREE.CanvasTexture(wc);
+
+    // a couple of dark service bands — lift cores and plant floors
+    g.fillStyle = "rgba(0,0,0,0.85)";
+    for (let i = 0; i < 2; i++) {
+      const y = Math.random() * H;
+      g.fillRect(0, y, W, floorH * (1 + Math.random()));
+    }
+
+    const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
     return t;
   }
 
@@ -346,11 +434,17 @@ export class ShowroomDrive {
   _makeTower(w, h, style, beaconArr, matsArr) {
     const g = new THREE.Group();
     const tex = this._facadeTex(style);
+    // Dark glass, not painted concrete: low roughness and real metalness so
+    // the facade picks up the moon and the city instead of reading as a flat
+    // emissive card. Emissive carries only the lit windows.
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x080b12, roughness: 0.8, metalness: 0.2,
-      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.85 + Math.random() * 0.45,
+      color: 0x04060b, roughness: 0.26, metalness: 0.72, envMapIntensity: 0.5,
+      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.62 + Math.random() * 0.3,
     });
-    tex.repeat.set(Math.max(1, Math.round(w / 3)), Math.max(2, Math.round(h / 5)));
+    // Tile at a fixed world size so a storey is the same height on every
+    // tower — varying it per building is what made the skyline read as
+    // cardboard cut-outs at different scales.
+    tex.repeat.set(Math.max(1, w / 7), Math.max(2, h / 26));
     matsArr.push(mat);
 
     const main = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
@@ -546,6 +640,35 @@ export class ShowroomDrive {
     horizon.position.set(-20, 30, -352);
     horizon.renderOrder = -1;
     this.ride.add(horizon);
+
+    /*
+     * The wet road carries the city.
+     *
+     * A true planar reflection is off the table here — three.js Reflector and
+     * logarithmicDepthBuffer produce hard artefacts. But a mirror is only
+     * convincing at night because of what it does to LIGHT, not geometry: the
+     * skyline smears into long vertical streaks down the tarmac. So the
+     * horizon is redrawn, blurred and stretched, laid flat on the road and
+     * faded toward the camera. That single plane is most of the reference's
+     * wet-asphalt look.
+     */
+    // Sized and placed to sit ON the carriageway (the road is 19 wide, the
+    // pavements take it to ~30) and to run from just ahead of the car out to
+    // 200m — that band is what the driver actually sees. The texture's strong
+    // end is at +V, which maps to world −Z, so the city smear lands in the
+    // distance and the tarmac under the car stays black.
+    const mirror = new THREE.Mesh(
+      new THREE.PlaneGeometry(34, 200),
+      new THREE.MeshBasicMaterial({
+        map: this._roadMirrorTex(), transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, opacity: 0.9, fog: false,
+      })
+    );
+    mirror.rotation.x = -Math.PI / 2;
+    mirror.position.set(0, 0.02, -100);
+    mirror.renderOrder = 3;
+    this.roadMirror = mirror;
+    this.ride.add(mirror);
 
     // ---- near towers flanking the right side + some left beyond water start ----
     this.rideTowers = [];
@@ -921,6 +1044,65 @@ export class ShowroomDrive {
     c.userData.speed = 26 + Math.random() * 10;
     this.ride.add(c);
     return c;
+  }
+
+  /*
+   * The skyline as the wet road sees it: the same lit windows, smeared into
+   * vertical streaks, blurred, and faded out toward the viewer so the tarmac
+   * closest to the car stays black. Drawn once into a canvas at build time.
+   */
+  _roadMirrorTex() {
+    const W = 1024, H = 512;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+
+    // vertical light streaks, brightest where a lit tower stands
+    for (let i = 0; i < 190; i++) {
+      const x = Math.random() * W;
+      const warm = Math.random() < 0.72;
+      const len = 60 + Math.random() * 300;
+      const wdt = 2 + Math.random() * 11;
+      const a = 0.05 + Math.random() * 0.4;
+      const grd = g.createLinearGradient(0, 0, 0, len);
+      const c = warm ? "255,196,120" : "150,190,255";
+      grd.addColorStop(0, `rgba(${c},${a})`);
+      grd.addColorStop(0.45, `rgba(${c},${a * 0.4})`);
+      grd.addColorStop(1, `rgba(${c},0)`);
+      g.fillStyle = grd;
+      g.fillRect(x, 0, wdt, len);
+    }
+
+    // a few long hero streaks — the tall towers reaching down the road
+    for (let i = 0; i < 12; i++) {
+      const x = Math.random() * W;
+      const grd = g.createLinearGradient(0, 0, 0, H * 0.9);
+      grd.addColorStop(0, "rgba(255,214,150,0.34)");
+      grd.addColorStop(0.5, "rgba(255,200,130,0.11)");
+      grd.addColorStop(1, "rgba(255,190,120,0)");
+      g.fillStyle = grd;
+      g.fillRect(x, 0, 5 + Math.random() * 16, H * 0.9);
+    }
+
+    // blur so it reads as a reflection in moving water, not as stripes
+    g.filter = "blur(5px)";
+    g.drawImage(cv, 0, 0);
+    g.filter = "none";
+
+    // fade the near end to nothing — tarmac under the car is not a mirror
+    const fade = g.createLinearGradient(0, H, 0, 0);
+    fade.addColorStop(0, "rgba(0,0,0,1)");
+    fade.addColorStop(0.42, "rgba(0,0,0,0.55)");
+    fade.addColorStop(1, "rgba(0,0,0,0)");
+    g.globalCompositeOperation = "destination-out";
+    g.fillStyle = fade;
+    g.fillRect(0, 0, W, H);
+
+    const t = new THREE.CanvasTexture(cv);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    return t;
   }
 
   /*
@@ -1499,6 +1681,7 @@ export class ShowroomDrive {
     if (!this.visible) return;
     if (activeCar) this._car = activeCar;
     if (this.starMat) this.starMat.uniforms.uTime.value = t;
+    if (this.skyMat) this.skyMat.uniforms.uTime.value = t;
 
     // clouds drift; aircraft crosses; beacons blink — the sky is alive in both acts
     for (const c of this.clouds || []) {
@@ -1594,6 +1777,13 @@ export class ShowroomDrive {
 
     // far city + water drift by slowly (parallax)
     this.farCity.position.z = (this.farCity.position.z + flow * 0.22) % 220;
+    // the reflection drifts slower than the road, as a distant image does
+    if (this.roadMirror) {
+      // scroll it with the road, wrapping on the streak texture's own period
+      this.roadMirror.material.map.offset.y = (this.roadMirror.material.map.offset.y - flow * 0.004) % 1;
+      // water never holds still: the reflection breathes
+      this.roadMirror.material.opacity = 0.72 + 0.14 * Math.sin(t * 0.55) + 0.05 * Math.sin(t * 1.9);
+    }
     for (const s of this.waterStreaks) {
       s.position.z += flow * 0.4;
       if (s.position.z > 20) s.position.z = -430;

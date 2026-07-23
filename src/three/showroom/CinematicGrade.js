@@ -23,7 +23,7 @@ const CinematicGradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
-    uAberration: { value: 0.0016 },
+    uAberration: { value: 0.0009 },
     uVignette: { value: 0.32 },
     uGrain: { value: 0.03 },
     uHalation: { value: 0.18 },
@@ -96,7 +96,7 @@ export class CinematicGrade extends ShaderPass {
     // uVignette is driven per-frame by the render loop (it depends on which
     // camera is live, not only on the mode) — see Showroom's drive branch
     gsap.to(u.uHalation, { value: m.rain ? 0.3 : 0.18, ...d });
-    gsap.to(u.uAberration, { value: m.name === "Sport" ? 0.0026 : 0.0016, ...d });
+    gsap.to(u.uAberration, { value: m.name === "Sport" ? 0.0015 : 0.0009, ...d });
   }
 }
 
