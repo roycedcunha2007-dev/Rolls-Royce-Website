@@ -437,9 +437,13 @@ export class ShowroomDrive {
     // Dark glass, not painted concrete: low roughness and real metalness so
     // the facade picks up the moon and the city instead of reading as a flat
     // emissive card. Emissive carries only the lit windows.
+    // Dark glass, but the reflective sheen must stay subtle — too much
+    // metalness turned the whole skyline into blue cardboard mirrors of the
+    // studio HDR. The lit windows (emissive) should dominate; the glass just
+    // catches a faint edge of the night.
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x04060b, roughness: 0.26, metalness: 0.72, envMapIntensity: 0.5,
-      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.62 + Math.random() * 0.3,
+      color: 0x03050a, roughness: 0.42, metalness: 0.32, envMapIntensity: 0.22,
+      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.7 + Math.random() * 0.3,
     });
     // Tile at a fixed world size so a storey is the same height on every
     // tower — varying it per building is what made the skyline read as
@@ -558,18 +562,32 @@ export class ShowroomDrive {
     this.rideTowerMats = [];
 
     // ---- the boulevard ----
+    // Genuinely wet, not faked. A real reflective material with its OWN night
+    // environment map (dark sky + a warm sodium horizon) is what gives rain-
+    // slicked asphalt its sheen. The roughness MAP makes the wetness uneven —
+    // glossy where water pools between the tyre tracks, drier on the crown —
+    // which is what stops it reading as a sheet of plastic.
     this.roadTex = this._roadTexture();
+    this.nightEnv = this._nightEnvTex();
+    const roadRough = this._roadRoughTex();
     const road = new THREE.Mesh(
       new THREE.PlaneGeometry(19, 520),
-      new THREE.MeshStandardMaterial({ color: 0x0a0c11, roughness: 0.9, metalness: 0.0, map: this.roadTex, envMapIntensity: 0.03 })
+      new THREE.MeshStandardMaterial({
+        color: 0x04060a, map: this.roadTex,
+        roughness: 0.44, roughnessMap: roadRough, metalness: 0.78,
+        envMap: this.nightEnv, envMapIntensity: 0.92,
+      })
     );
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0.002, -220);
     road.receiveShadow = true;
     this.ride.add(road);
 
-    // pavements
-    const walkMat = new THREE.MeshStandardMaterial({ color: 0x0d0f14, roughness: 0.92 });
+    // pavements — damp, not flooded
+    const walkMat = new THREE.MeshStandardMaterial({
+      color: 0x080a10, roughness: 0.6, metalness: 0.5,
+      envMap: this.nightEnv, envMapIntensity: 0.6,
+    });
     for (const [x, w] of [[-11.4, 4], [11.4, 4]]) {
       const walk = new THREE.Mesh(new THREE.PlaneGeometry(w, 520), walkMat);
       walk.rotation.x = -Math.PI / 2;
@@ -642,33 +660,28 @@ export class ShowroomDrive {
     this.ride.add(horizon);
 
     /*
-     * The wet road carries the city.
-     *
-     * A true planar reflection is off the table here — three.js Reflector and
-     * logarithmicDepthBuffer produce hard artefacts. But a mirror is only
-     * convincing at night because of what it does to LIGHT, not geometry: the
-     * skyline smears into long vertical streaks down the tarmac. So the
-     * horizon is redrawn, blurred and stretched, laid flat on the road and
-     * faded toward the camera. That single plane is most of the reference's
-     * wet-asphalt look.
+     * The reflective road (above) carries the base sheen. The bright vertical
+     * smears — the part the eye reads as "wet" — are anchored to the actual
+     * lights: the street lamps carry their own streaks, and the car's own
+     * headlamps pour a long reflection down the tarmac ahead. Because every
+     * streak is locked to a real light, none can appear "out of nowhere" the
+     * way a free-floating panel did.
      */
-    // Sized and placed to sit ON the carriageway (the road is 19 wide, the
-    // pavements take it to ~30) and to run from just ahead of the car out to
-    // 200m — that band is what the driver actually sees. The texture's strong
-    // end is at +V, which maps to world −Z, so the city smear lands in the
-    // distance and the tarmac under the car stays black.
-    const mirror = new THREE.Mesh(
-      new THREE.PlaneGeometry(34, 200),
-      new THREE.MeshBasicMaterial({
-        map: this._roadMirrorTex(), transparent: true, depthWrite: false,
-        blending: THREE.AdditiveBlending, opacity: 0.9, fog: false,
-      })
-    );
-    mirror.rotation.x = -Math.PI / 2;
-    mirror.position.set(0, 0.02, -100);
-    mirror.renderOrder = 3;
-    this.roadMirror = mirror;
-    this.ride.add(mirror);
+    this.headlightWet = new THREE.Group();
+    for (const dx of [-0.7, 0.7]) {
+      const s = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.5, 11),
+        new THREE.MeshBasicMaterial({
+          map: this._streakTex(), transparent: true, depthWrite: false,
+          blending: THREE.AdditiveBlending, color: 0xeaf2ff, opacity: 0.34, fog: false,
+        })
+      );
+      s.rotation.x = -Math.PI / 2;
+      s.position.set(dx, 0.016, -6.5);   // ahead of the nose (nose points -Z)
+      this.headlightWet.add(s);
+    }
+    this.headlightWet.visible = false;   // only while headlights are on
+    this.ride.add(this.headlightWet);
 
     // ---- near towers flanking the right side + some left beyond water start ----
     this.rideTowers = [];
@@ -1044,6 +1057,107 @@ export class ShowroomDrive {
     c.userData.speed = 26 + Math.random() * 10;
     this.ride.add(c);
     return c;
+  }
+
+  /*
+   * A night environment the wet road can reflect: an equirectangular canvas,
+   * navy-black overhead falling to a warm sodium band at the horizon, with a
+   * scatter of soft city-glow. Assigned as the road's own envMap (so it does
+   * not touch the car or buildings). Pre-blurred so a rough surface samples
+   * it smoothly instead of sparkling.
+   */
+  _nightEnvTex() {
+    const W = 1024, H = 512;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+
+    // vertical gradient: dark zenith → warm horizon → dark ground
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0.0, "#010204");
+    grad.addColorStop(0.38, "#04070e");
+    grad.addColorStop(0.5, "#12100f");   // the horizon glow the road catches
+    grad.addColorStop(0.52, "#080b14");
+    grad.addColorStop(1.0, "#010203");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+
+    // warm sodium band tight on the horizon line — kept low so the road reads
+    // cool with the warmth concentrated, not washed brown end to end
+    const band = g.createLinearGradient(0, H * 0.44, 0, H * 0.52);
+    band.addColorStop(0, "rgba(190,116,56,0)");
+    band.addColorStop(0.5, "rgba(198,124,60,0.34)");
+    band.addColorStop(1, "rgba(120,130,160,0)");
+    g.fillStyle = band;
+    g.fillRect(0, H * 0.42, W, H * 0.12);
+
+    // scattered city glow just above the horizon — soft blobs, warm and cool
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random() * W;
+      const y = H * 0.4 + Math.random() * H * 0.1;
+      const r = 18 + Math.random() * 70;
+      const warm = Math.random() < 0.7;
+      const gl = g.createRadialGradient(x, y, 0, x, y, r);
+      gl.addColorStop(0, warm ? "rgba(230,150,80,0.16)" : "rgba(150,180,230,0.12)");
+      gl.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = gl;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    // the moon, high on one side
+    const mg = g.createRadialGradient(W * 0.2, H * 0.16, 0, W * 0.2, H * 0.16, 60);
+    mg.addColorStop(0, "rgba(224,230,244,0.5)");
+    mg.addColorStop(1, "rgba(224,230,244,0)");
+    g.fillStyle = mg;
+    g.fillRect(0, 0, W * 0.45, H * 0.4);
+
+    g.filter = "blur(4px)";
+    g.drawImage(cv, 0, 0);
+    g.filter = "none";
+
+    const t = new THREE.CanvasTexture(cv);
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  /*
+   * Roughness map for the road: water pools between the wheel tracks and at
+   * the kerb, so those bands are near-mirror (dark = smooth) while the crown
+   * of the camber and the worn centre are drier (light = rough). This uneven
+   * gloss is most of what separates wet tarmac from wet plastic.
+   */
+  _roadRoughTex() {
+    const W = 128, H = 512;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#8a8a8a";   // mid roughness baseline
+    g.fillRect(0, 0, W, H);
+    // two glossy wheel-track bands + a glossy gutter each side
+    for (const [cx, w] of [[0.28, 0.14], [0.72, 0.14], [0.04, 0.06], [0.96, 0.06]]) {
+      const x = cx * W, ww = w * W;
+      const grd = g.createLinearGradient(x - ww, 0, x + ww, 0);
+      grd.addColorStop(0, "rgba(30,30,30,0)");
+      grd.addColorStop(0.5, "rgba(30,30,30,0.85)");   // dark = smooth = wet
+      grd.addColorStop(1, "rgba(30,30,30,0)");
+      g.fillStyle = grd;
+      g.fillRect(x - ww, 0, ww * 2, H);
+    }
+    // blotchy puddles for irregularity
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random() * W, y = Math.random() * H;
+      const r = 6 + Math.random() * 22;
+      const gl = g.createRadialGradient(x, y, 0, x, y, r);
+      gl.addColorStop(0, `rgba(20,20,20,${0.3 + Math.random() * 0.4})`);
+      gl.addColorStop(1, "rgba(20,20,20,0)");
+      g.fillStyle = gl;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1, 40);
+    return t;
   }
 
   /*
@@ -1532,6 +1646,7 @@ export class ShowroomDrive {
       gsap.to(this._car.group.rotation, { y: Math.PI / 2, duration: 1.3, ease: "power2.inOut" });
       gsap.to(this._car.group.position, { x: LANE_X, duration: 1.6, ease: "power2.inOut" });
       if (this._car.headlights) this._car.headlights.visible = true;
+      if (this.headlightWet) this.headlightWet.visible = true;
       this._attachBlinkers(this._car);
       this.setCabinLight(true);   // the seated cameras need a lit cabin
     }
@@ -1554,6 +1669,7 @@ export class ShowroomDrive {
       gsap.to(this._car.group.position, { x: 0, duration: 1.0, ease: "power2.inOut" });
       this._car.group.rotation.z = 0;
       if (this._car.headlights) this._car.headlights.visible = false;
+      if (this.headlightWet) this.headlightWet.visible = false;
       for (const w of this._car.wheelPivots) w.rotation.z = 0;
       for (const s of this.blinkSprites) s.visible = false;
     }
@@ -1777,12 +1893,14 @@ export class ShowroomDrive {
 
     // far city + water drift by slowly (parallax)
     this.farCity.position.z = (this.farCity.position.z + flow * 0.22) % 220;
-    // the reflection drifts slower than the road, as a distant image does
-    if (this.roadMirror) {
-      // scroll it with the road, wrapping on the streak texture's own period
-      this.roadMirror.material.map.offset.y = (this.roadMirror.material.map.offset.y - flow * 0.004) % 1;
-      // water never holds still: the reflection breathes
-      this.roadMirror.material.opacity = 0.72 + 0.14 * Math.sin(t * 0.55) + 0.05 * Math.sin(t * 1.9);
+
+    // the headlamp reflection shimmers on the moving water, and rides the
+    // car's own lane so it always sits directly ahead of the nose
+    if (this.headlightWet) {
+      this.headlightWet.position.x = (this._car ? this._car.group.position.x : LANE_X) - LANE_X;
+      for (const s of this.headlightWet.children) {
+        s.material.opacity = 0.26 + 0.12 * Math.abs(Math.sin(t * 3.1 + s.position.x));
+      }
     }
     for (const s of this.waterStreaks) {
       s.position.z += flow * 0.4;
