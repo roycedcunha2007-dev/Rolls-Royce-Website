@@ -563,35 +563,33 @@ export class ShowroomDrive {
       this.roadPools.push(pl);
     }
 
-    // ---- oncoming traffic (headlight pairs) + a slow leader ahead ----
+    // ---- oncoming traffic + a slow leader ahead ----
+    // At night an oncoming car is a silhouette behind its own glare, never a
+    // lit box: near-black paint, no metalness to catch the moon, a greenhouse
+    // that steps in from the body, and a faint glazing sheen.
     this.traffic = [];
     for (let i = 0; i < 3; i++) {
-      const c = new THREE.Group();
-      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.5, metalness: 0.6 });
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.1, 4.6), bodyMat);
-      body.position.y = 0.62;
-      c.add(body);
-      for (const dx of [-0.62, 0.62]) {
-        const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._softDot(), color: 0xfff3dc, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
-        h.scale.setScalar(0.65);
-        h.position.set(dx, 0.62, 2.35);
-        c.add(h);
-      }
-      const pl = new THREE.PointLight(0xfff0d8, 9, 15, 2);
-      pl.position.set(0, 0.7, 2.6);
-      c.add(pl);
-      c.position.set(ONCOMING_X + (i % 2) * 2.1, 0, -80 - i * 90);
-      c.userData.speed = 26 + Math.random() * 10;
-      this.ride.add(c);
-      this.traffic.push(c);
+      this.traffic.push(this._makeTrafficCar(i));
     }
 
-    // taillights of a car far ahead in our lane
+    // taillights of a car far ahead in our lane, with a body to hang them on
     this.leader = new THREE.Group();
-    for (const dx of [-0.6, 0.6]) {
-      const t = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._softDot(), color: 0xff2a22, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
-      t.scale.setScalar(0.9);
-      t.position.set(dx, 0.62, 0);
+    const leadMat = new THREE.MeshStandardMaterial({ color: 0x07080b, roughness: 0.85, metalness: 0.0 });
+    const leadBody = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.82, 4.5), leadMat);
+    leadBody.position.y = 0.5;
+    const leadTop = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.6, 2.5), leadMat);
+    leadTop.position.set(0, 1.2, -0.15);
+    this.leader.add(leadBody, leadTop);
+    for (const dx of [-0.66, 0.66]) {
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.1, 0.06),
+        new THREE.MeshBasicMaterial({ color: 0xff2a1c, toneMapped: false })
+      );
+      bar.position.set(dx, 0.72, 2.26);
+      this.leader.add(bar);
+      const t = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._softDot(), color: 0xff2a22, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+      t.scale.setScalar(0.85);
+      t.position.set(dx, 0.72, 2.3);
       this.leader.add(t);
     }
     this.leader.position.set(LANE_X, 0, -130);
@@ -680,6 +678,53 @@ export class ShowroomDrive {
     t.repeat.set(1, 48);
     t.anisotropy = 8;
     return t;
+  }
+
+  /* One oncoming vehicle: silhouette body, greenhouse, headlamps, glare. */
+  _makeTrafficCar(i) {
+    const c = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x06070a, roughness: 0.82, metalness: 0.0, envMapIntensity: 0.06 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x0b1018, roughness: 0.25, metalness: 0.1, envMapIntensity: 0.3 });
+
+    const saloon = i % 2 === 0;
+    const len = saloon ? 4.5 : 5.1;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.8, len), bodyMat);
+    body.position.y = 0.5;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.62, saloon ? 0.58 : 0.72, len * 0.55), glassMat);
+    top.position.set(0, saloon ? 1.19 : 1.26, 0.1);
+    c.add(body, top);
+
+    // wheels — just enough to break the box silhouette
+    const tyre = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.95 });
+    for (const dx of [-0.95, 0.95]) {
+      for (const dz of [len * 0.31, -len * 0.31]) {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 12), tyre);
+        w.rotation.z = Math.PI / 2;
+        w.position.set(dx, 0.33, dz);
+        c.add(w);
+      }
+    }
+
+    for (const dx of [-0.66, 0.66]) {
+      const lamp = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.12, 0.06),
+        new THREE.MeshBasicMaterial({ color: 0xfff6e4, toneMapped: false })
+      );
+      lamp.position.set(dx, 0.66, len / 2 - 0.02);
+      c.add(lamp);
+      const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._softDot(), color: 0xfff3dc, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+      h.scale.setScalar(0.85);
+      h.position.set(dx, 0.66, len / 2 + 0.05);
+      c.add(h);
+    }
+    const pl = new THREE.PointLight(0xfff0d8, 9, 15, 2);
+    pl.position.set(0, 0.7, len / 2 + 0.3);
+    c.add(pl);
+
+    c.position.set(ONCOMING_X + (i % 2) * 2.1, 0, -80 - i * 90);
+    c.userData.speed = 26 + Math.random() * 10;
+    this.ride.add(c);
+    return c;
   }
 
   /* Distant skyline for the horizon plane: haze, silhouettes, lit windows. */
