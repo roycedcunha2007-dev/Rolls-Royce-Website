@@ -960,37 +960,53 @@ export class ShowroomDrive {
   _buildBridge() {
     const g = new THREE.Group();
     const steel = new THREE.MeshStandardMaterial({ color: 0x1b1f27, roughness: 0.55, metalness: 0.7 });
-    const cableMat = new THREE.MeshStandardMaterial({ color: 0x232833, roughness: 0.7, metalness: 0.5 });
+    const cableMat = new THREE.MeshStandardMaterial({ color: 0x2a303c, roughness: 0.6, metalness: 0.55 });
+
+    // A cable-stay: cables run from HIGH on the tower DOWN to the deck on
+    // both sides. The deck edge sits just above the road; the towers rise
+    // above it; the cross-strut ties the tower tops together.
+    const TOWER_TOP = 43, DECK_Y = 1.8, DROP = TOWER_TOP - DECK_Y;
 
     for (const sx of [-1, 1]) {
-      const tower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 46, 1.5), steel);
-      tower.position.set(sx * 12.4, 23, 0);
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 48, 1.5), steel);
+      tower.position.set(sx * 12.4, 24, 0);
       g.add(tower);
+
+      // deck edge girder the cables land on, running along the road
+      const girder = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 56), steel);
+      girder.position.set(sx * 11.6, DECK_Y, 0);
+      g.add(girder);
+
       // aviation light at the top
       const beacon = new THREE.Sprite(new THREE.SpriteMaterial({
         map: this._softDot(), color: 0xff3b30, transparent: true, opacity: 0.9, fog: false, depthWrite: false,
       }));
       beacon.scale.setScalar(2.4);
-      beacon.position.set(sx * 12.4, 46.5, 0);
+      beacon.position.set(sx * 12.4, 48.5, 0);
       g.add(beacon);
       (this.beacons = this.beacons || []).push(beacon);
 
-      // stay cables fanning down to the deck
-      for (let i = 1; i <= 7; i++) {
-        const reach = i * 12;
-        const top = 44 - i * 1.6;
-        const len = Math.hypot(reach, top);
+      /*
+       * Each cable spans from the tower top (z = 0, y = TOWER_TOP) out to a
+       * deck anchor (z = ±reach, y = DECK_Y). A default cylinder lies along
+       * +Y; rotating about X by atan2(±reach, −DROP) lays it exactly on that
+       * line — the negative DROP is what puts the HIGH end at the tower and
+       * the LOW end out on the deck, instead of the other way up.
+       */
+      for (let i = 1; i <= 8; i++) {
+        const reach = i * 3.1;
+        const len = Math.hypot(DROP, reach);
         for (const dir of [-1, 1]) {
-          const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, len, 5), cableMat);
-          cable.position.set(sx * 12.4, top / 2 + 1, dir * reach / 2);
-          cable.rotation.x = dir * Math.atan2(reach, top);
+          const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, len, 5), cableMat);
+          cable.position.set(sx * 12.4, (TOWER_TOP + DECK_Y) / 2, dir * reach / 2);
+          cable.rotation.x = Math.atan2(dir * reach, -DROP);
           g.add(cable);
         }
       }
     }
-    // the cross beam joining the towers
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(26, 1.2, 1.2), steel);
-    beam.position.set(0, 42, 0);
+    // the strut joining the tower tops
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(26, 1.4, 1.4), steel);
+    beam.position.set(0, TOWER_TOP + 1.5, 0);
     g.add(beam);
 
     g.position.z = -TUNNEL_LEN - 340 - EVENT_GAP / 2;
@@ -1517,10 +1533,10 @@ export class ShowroomDrive {
         const sway = Math.sin(t * 0.9) * 0.14 * m.sway;
         v.pos.set(
           lane * 0.6 + sway + this.input.steer * 0.55,
-          2.3 + pitch * 0.55 + Math.cos(t * 5) * 0.012,
-          9.6 + pitch * 1.6
+          2.3 + pitch * 0.3 + Math.cos(t * 5) * 0.012,
+          9.6 + pitch * 0.85
         );
-        v.look.set(lane * 0.85 + this.input.steer * 1.2, 1.02 - pitch * 0.8, -15);
+        v.look.set(lane * 0.85 + this.input.steer * 1.2, 1.02 - pitch * 0.5, -15);
         v.fov = m.fov + Math.min(6, this.speed * 0.02);
       }
     }
@@ -1852,9 +1868,10 @@ export class ShowroomDrive {
     this._trip += miles;
     this._fuel = Math.max(0, this._fuel - miles / this._mpg());
 
-    // camera-inertia pitch: +accel leans back, braking dips the nose
-    const pitchTarget = THREE.MathUtils.clamp(accel * 3.2, -0.5, 0.5) * m.inertia;
-    this._pitch += (pitchTarget - this._pitch) * 0.06;
+    // camera-inertia pitch: +accel leans back, braking dips the nose. Kept
+    // gentle and clamped tight — a big pitch swing read as the car lifting.
+    const pitchTarget = THREE.MathUtils.clamp(accel * 2.0, -0.28, 0.28) * m.inertia;
+    this._pitch += (pitchTarget - this._pitch) * 0.045;
 
     const flow = this.speed * dt * 0.42;
 
@@ -1950,8 +1967,10 @@ export class ShowroomDrive {
       // body roll from lateral movement + acceleration squat
       this._roll += ((-lateralV * 0.02) - this._roll) * 0.08;
       g.rotation.z = this._roll;
-      g.rotation.x = -this._pitch * 0.35;
-      g.position.y = CAR_Y + Math.sin(this._rideT * 1.7) * m.float + Math.sin(this._rideT * 23) * 0.004 * (this.speed / 100);
+      // the body pitches only slightly on the springs; it must not appear to
+      // leave the road. The vertical float is a millimetre-scale breathe.
+      g.rotation.x = -this._pitch * 0.16;
+      g.position.y = CAR_Y + Math.sin(this._rideT * 1.7) * m.float * 0.5 + Math.sin(this._rideT * 18) * 0.0015 * (this.speed / 120);
       const wheelSpin = flow * 0.9;
       for (const w of activeCar.wheelPivots) w.rotation.z -= wheelSpin;
     }

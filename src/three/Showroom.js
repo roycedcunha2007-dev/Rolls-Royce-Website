@@ -969,8 +969,11 @@ export class Showroom {
          */
         if (!this._camVel) { this._camVel = new THREE.Vector3(); this._camAcc = new THREE.Vector3(); }
         const onboardCam = this.drive.onboardCams?.has(this.drive.rideCam);
-        const stiff = onboardCam ? 118 : 26;
-        const damp = onboardCam ? 19 : 9.2;
+        // Slightly OVER-damped (ζ≈1.1): keeps the weight and lag of a spring
+        // but never overshoots — overshoot on an accel change was reading as
+        // the whole car lurching up.
+        const stiff = onboardCam ? 120 : 30;
+        const damp = onboardCam ? 24 : 12;
         const h = Math.min(dt, 1 / 30);          // never integrate a long frame
         // a = k·(target − x) − c·v
         this._camAcc.copy(v.pos).sub(this.smoothPos).multiplyScalar(stiff)
@@ -981,15 +984,15 @@ export class Showroom {
         this.smoothLook.lerp(v.look, 1 - Math.pow(0.001, h));
 
         /*
-         * Road vibration. Real texture, not a wobble: a fast component for
-         * the coarse chip in the asphalt, a slow one for the body of the car
-         * breathing on its air springs. Both scale with speed, and both are
-         * an order of magnitude stronger from a seat than from a drone.
+         * Road vibration — a whisper, not a buzz. A Rolls rides on air; the
+         * micro-tremor here is barely there, low frequency, and it is NOT
+         * coupled into camera roll (that coupling was most of the shake the
+         * user felt). It fades out below a crawl so a parked car is dead still.
          */
         const spd = this.drive.speed || 0;
-        const shake = (spd / 160) * (onboardCam ? 0.028 : 0.006);
-        const jx = (Math.sin(t * 47.3) + Math.sin(t * 31.1) * 0.6) * shake;
-        const jy = (Math.sin(t * 39.7) + Math.sin(t * 23.9) * 0.7) * shake;
+        const shake = Math.min(1, spd / 120) * (onboardCam ? 0.006 : 0.002);
+        const jx = (Math.sin(t * 9.3) + Math.sin(t * 5.1) * 0.5) * shake;
+        const jy = (Math.sin(t * 7.7) + Math.sin(t * 4.3) * 0.6) * shake;
 
         this.camera.position.set(
           this.smoothPos.x + this.mouse.x * 0.14 + jx,
@@ -998,7 +1001,7 @@ export class Showroom {
         );
         this.camera.lookAt(this.smoothLook);
         // steering rolls the camera fractionally, as a head does in a corner
-        this.camera.rotation.z += -this.drive.input.steer * 0.012 + jx * 0.4;
+        this.camera.rotation.z += -this.drive.input.steer * 0.01;
         // Auto-exposure. Onboard cameras stare down an unlit road away from
         // the street lamps, so at the pavilion's exposure they render almost
         // black. A real camera opens up for that shot; so does this one.
