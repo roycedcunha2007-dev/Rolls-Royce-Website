@@ -48,6 +48,15 @@ const CINE_SEQUENCE = [
   ["bumper", 3.5], ["interior", 7], ["drone", 9], ["rear", 5], ["top", 5],
 ];
 
+/*
+ * Building metrics, in metres. A storey is ~3.5 m and a curtain-wall bay is
+ * ~1.75 m in the real world; the facade texture is tiled to those figures so
+ * a tower's windows are the right SIZE for its height. Getting this wrong is
+ * what makes a box read as graph paper instead of architecture.
+ */
+const FLOOR_M = 3.55;
+const BAY_M = 1.75;
+
 /* The Ghost's real numbers, so the instruments have something true to say. */
 const TUNNEL_LEN = 84;        // world units ≈ metres
 const EVENT_GAP = 760;        // between set pieces: ~19 s at a 96 mph cruise
@@ -355,11 +364,24 @@ export class ShowroomDrive {
    * thing that made the old city look like vector art, so the light here is
    * clustered per floor and per bay, never independent per window.
    *
-   * Rendered at 256x512 (4x the old resolution) so mullions survive at the
-   * near towers instead of aliasing into mush.
+   * Drawn one cell (one bay × one storey) at 48px so mullions and spandrels
+   * survive at the near towers, and CACHED per style: the tile is mapped to
+   * real metres through the mesh's own UVs (see _facadeGeo), so every tower
+   * can share these few textures instead of baking its own canvas.
    */
   _facadeTex(style = 0) {
-    const W = 256, H = 512;
+    this._facadeCache = this._facadeCache || {};
+    if (this._facadeCache[style]) return this._facadeCache[style];
+
+    // bays × storeys per tile. The world size of a bay and a storey is FIXED
+    // (BAY_M / FLOOR_M) — only how many of them a tile holds varies, which is
+    // what gives one tower a wide lazy grid and its neighbour a tight one.
+    const [bays, floors, litFloor] = [
+      [8, 16, 0.30], [6, 12, 0.20], [10, 20, 0.42], [7, 14, 0.16], [9, 18, 0.26],
+    ][style % 5];
+
+    const CELL = 48;
+    const W = bays * CELL, H = floors * CELL;
     const cv = document.createElement("canvas");
     cv.width = W; cv.height = H;
     const g = cv.getContext("2d");
@@ -368,14 +390,17 @@ export class ShowroomDrive {
     g.fillStyle = "#05070c";
     g.fillRect(0, 0, W, H);
 
-    const floorH = [13, 16, 11, 20][style % 4];   // storey height in px
-    const bayW = [11, 14, 9, 17][style % 4];      // window bay width
-    const litFloor = [0.34, 0.22, 0.46, 0.16][style % 4];
+    const floorH = CELL, bayW = CELL;
 
     // structural grid first — this is what the eye reads as "a building"
-    g.fillStyle = "rgba(150,168,190,0.05)";
-    for (let y = 0; y < H; y += floorH) g.fillRect(0, y, W, 1);       // slabs
-    for (let x = 0; x < W; x += bayW) g.fillRect(x, 0, 1, H);         // mullions
+    g.fillStyle = "rgba(150,168,190,0.06)";
+    for (let y = 0; y < H; y += floorH) g.fillRect(0, y, W, 3);       // slabs
+    for (let x = 0; x < W; x += bayW) g.fillRect(x, 0, 2, H);         // mullions
+
+    // spandrel panel under every window — the opaque band that hides the
+    // floor structure. Without it a tower is all glass and reads as a screen.
+    g.fillStyle = "rgba(0,0,0,0.55)";
+    for (let y = 0; y < H; y += floorH) g.fillRect(0, y + floorH * 0.66, W, floorH * 0.34);
 
     for (let y = 2, row = 0; y < H - 2; y += floorH, row++) {
       // whole floors switch on together; between them, scattered rooms
@@ -404,15 +429,24 @@ export class ShowroomDrive {
         // Office light is tungsten or cool fluorescent — amber-white or
         // blue-white. Saturated colour here turns the skyline into confetti,
         // and the grade's chromatic aberration then fringes every window.
+        // the lit part is the VISION glass only — the top two thirds of the
+        // storey. Light spilling over the spandrel is what read as one tall
+        // smear per bay rather than a floor of offices.
+        const gh = floorH * 0.58, gw = bayW - 5;
         g.fillStyle = warm
           ? `rgba(${v}, ${v * 0.84}, ${v * 0.64}, ${a})`
           : `rgba(${v * 0.86}, ${v * 0.93}, ${v}, ${a * 0.8})`;
-        g.fillRect(x, y, bayW - 2.5, floorH - 3.5);
+        g.fillRect(x + 2, y + 3, gw, gh);
 
         // a brighter core so the window has a hot centre, not a flat fill
         if (Math.random() < 0.4) {
           g.fillStyle = warm ? `rgba(255,240,214,${a * 0.45})` : `rgba(236,244,255,${a * 0.4})`;
-          g.fillRect(x + 1, y + 1, bayW - 5, Math.max(1.5, floorH - 7));
+          g.fillRect(x + 5, y + 6, gw - 6, gh - 6);
+        }
+        // half-drawn blinds on some offices — a horizontal bite out of the top
+        if (Math.random() < 0.22) {
+          g.fillStyle = "rgba(4,6,11,0.72)";
+          g.fillRect(x + 2, y + 3, gw, gh * (0.25 + Math.random() * 0.35));
         }
       }
     }
@@ -420,20 +454,119 @@ export class ShowroomDrive {
     // a couple of dark service bands — lift cores and plant floors
     g.fillStyle = "rgba(0,0,0,0.85)";
     for (let i = 0; i < 2; i++) {
-      const y = Math.random() * H;
-      g.fillRect(0, y, W, floorH * (1 + Math.random()));
+      const y = Math.floor(Math.random() * floors) * floorH;
+      g.fillRect(0, y, W, floorH * (1 + Math.floor(Math.random() * 2)));
     }
 
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = 8;
+    // the tile's true size on the building, in metres — _facadeGeo scales
+    // each mesh's UVs by this so a storey is a storey on every tower
+    t.userData = { tileW: bays * BAY_M, tileH: floors * FLOOR_M };
+    this._facadeCache[style] = t;
     return t;
   }
 
-  /* a tower with setbacks, crown light and a rooftop beacon */
-  _makeTower(w, h, style, beaconArr, matsArr) {
+  /*
+   * A box whose UVs are scaled so the shared facade tile lands at real-world
+   * size on every face — width-facing sides use the box's width, depth-facing
+   * sides its depth, and the roof samples the dark corner of the tile so it
+   * reads as a flat deck rather than glazing laid on its back.
+   */
+  _facadeGeo(w, h, d, tex, uOff = 0, vOff = 0) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const { tileW, tileH } = tex.userData;
+    const uv = geo.attributes.uv;
+    const su = [d / tileW, d / tileW, 0, 0, w / tileW, w / tileW];
+    const sv = h / tileH;
+    for (let f = 0; f < 6; f++) {
+      const roof = f === 2 || f === 3;
+      for (let i = 0; i < 4; i++) {
+        const k = f * 4 + i;
+        uv.setXY(k,
+          roof ? 0.002 : uv.getX(k) * su[f] + uOff,
+          roof ? 0.002 : uv.getY(k) * sv + vOff);
+      }
+    }
+    uv.needsUpdate = true;
+    return geo;
+  }
+
+  /*
+   * Street level. A lobby or a shopfront is not a glowing slab — it is a run
+   * of tall glazed bays separated by dark piers, a few of them shut, with a
+   * hot sill where the light lands on the pavement. Drawn once and shared;
+   * _bandGeo tiles it along a band at its true width.
+   */
+  _shopTex() {
+    if (this._shopT) return this._shopT;
+    const W = 512, H = 128, BAY = 64;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#06070b";
+    g.fillRect(0, 0, W, H);
+
+    for (let x = 0; x < W; x += BAY) {
+      if (Math.random() < 0.24) continue;            // a unit shut for the night
+      const warm = Math.random() < 0.72;
+      const v = 120 + Math.random() * 110;
+      const col = warm ? `${v}, ${v * 0.72}, ${v * 0.46}` : `${v * 0.78}, ${v * 0.88}, ${v}`;
+      // the glazed bay, inset from its piers and stopping short of the sill
+      g.fillStyle = `rgba(${col}, 0.85)`;
+      g.fillRect(x + 7, 14, BAY - 14, H - 40);
+      // a hotter interior toward the back of the unit
+      g.fillStyle = `rgba(${col}, 0.55)`;
+      g.fillRect(x + 13, 30, BAY - 26, H - 70);
+      // the spill onto the pavement
+      const sp = g.createLinearGradient(0, H - 26, 0, H);
+      sp.addColorStop(0, `rgba(${col}, 0.5)`);
+      sp.addColorStop(1, `rgba(${col}, 0)`);
+      g.fillStyle = sp;
+      g.fillRect(x + 4, H - 26, BAY - 8, 26);
+    }
+    // fascia above and sill below, so the band has edges instead of bleeding
+    g.fillStyle = "rgba(3,4,7,0.94)";
+    g.fillRect(0, 0, W, 12);
+    g.fillRect(0, H - 7, W, 7);
+
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    t.colorSpace = THREE.SRGBColorSpace;
+    this._shopT = t;
+    return t;
+  }
+
+  /* a band whose texture repeats along its length but spans its height once */
+  _bandGeo(w, h, d, tileW) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const uv = geo.attributes.uv;
+    const su = [d / tileW, d / tileW, 0, 0, w / tileW, w / tileW];
+    for (let f = 0; f < 6; f++) {
+      const roof = f === 2 || f === 3;
+      for (let i = 0; i < 4; i++) {
+        const k = f * 4 + i;
+        uv.setXY(k, roof ? 0.002 : uv.getX(k) * su[f], roof ? 0.002 : uv.getY(k));
+      }
+    }
+    uv.needsUpdate = true;
+    return geo;
+  }
+
+  /*
+   * A tower: podium, shaft with a setback, crown light, rooftop beacon.
+   *
+   * The podium matters more than it sounds. A shaft that meets the pavement
+   * with a bare edge has nothing to give the eye at street level, and from a
+   * low camera it reads as a slab hovering over the road — which is exactly
+   * how the old towers looked. A wider base with a lit lobby band plants it.
+   */
+  _makeTower(w, h, style, beaconArr, matsArr, opts = {}) {
     const g = new THREE.Group();
     const tex = this._facadeTex(style);
+    const d = w * (0.72 + Math.random() * 0.62);   // rectangular footprint
     // Dark glass, not painted concrete: low roughness and real metalness so
     // the facade picks up the moon and the city instead of reading as a flat
     // emissive card. Emissive carries only the lit windows.
@@ -445,44 +578,104 @@ export class ShowroomDrive {
       color: 0x03050a, roughness: 0.42, metalness: 0.32, envMapIntensity: 0.22,
       emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.7 + Math.random() * 0.3,
     });
-    // Tile at a fixed world size so a storey is the same height on every
-    // tower — varying it per building is what made the skyline read as
-    // cardboard cut-outs at different scales.
-    tex.repeat.set(Math.max(1, w / 7), Math.max(2, h / 26));
     matsArr.push(mat);
 
-    const main = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
-    main.position.y = h / 2;
+    // ---- podium: the building's feet ----
+    const pod = opts.podium ? Math.min(h * 0.3, 5 + Math.random() * 8) : 0;
+    if (pod > 0) {
+      const pw = w + 1.4 + Math.random() * 2.6, pd = d + 1.4 + Math.random() * 2.6;
+      const podium = new THREE.Mesh(
+        this._facadeGeo(pw, pod, pd, tex, Math.random()),
+        new THREE.MeshStandardMaterial({
+          color: 0x0a0c11, roughness: 0.74, metalness: 0.16, envMapIntensity: 0.18,
+          emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.34,
+        })
+      );
+      podium.position.y = pod / 2;
+      g.add(podium);
+
+      // the lobby: glazed bays at pavement level, the one thing that makes a
+      // night street feel occupied
+      const shopTex = this._shopTex();
+      const lob = new THREE.Mesh(
+        this._bandGeo(pw + 0.08, 3.4, pd + 0.08, 14),
+        new THREE.MeshStandardMaterial({
+          color: 0x08090d, roughness: 0.42, metalness: 0.16,
+          emissive: 0xffffff, emissiveMap: shopTex,
+          emissiveIntensity: 0.85 + Math.random() * 0.4,
+        })
+      );
+      lob.position.y = 1.7;
+      g.add(lob);
+
+      // a shallow canopy over the entrance catches the lobby light
+      if (Math.random() < 0.55) {
+        const canopy = new THREE.Mesh(
+          new THREE.BoxGeometry(pw + 1.1, 0.22, pd + 1.1),
+          new THREE.MeshStandardMaterial({ color: 0x14171d, roughness: 0.62, metalness: 0.4 })
+        );
+        canopy.position.y = 3.5;
+        g.add(canopy);
+      }
+    }
+
+    // ---- shaft ----
+    const shaftY = pod;
+    const shaftH = Math.max(4, h - shaftY);
+    const main = new THREE.Mesh(this._facadeGeo(w, shaftH, d, tex, Math.random()), mat);
+    main.position.y = shaftY + shaftH / 2;
     g.add(main);
+
+    // a cornice line where the shaft leaves the podium
+    if (pod > 0) {
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.5, 0.34, d + 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x181b22, roughness: 0.6, metalness: 0.45 })
+      );
+      band.position.y = shaftY + 0.17;
+      g.add(band);
+    }
+
+    let top = h;
     if (Math.random() < 0.55) {
-      const w2 = w * (0.55 + Math.random() * 0.2);
-      const h2 = h * (0.2 + Math.random() * 0.25);
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, w2), mat);
+      const k = 0.55 + Math.random() * 0.2;
+      const h2 = shaftH * (0.2 + Math.random() * 0.25);
+      const upper = new THREE.Mesh(this._facadeGeo(w * k, h2, d * k, tex, Math.random()), mat);
       upper.position.y = h + h2 / 2;
       g.add(upper);
+      top = h + h2;
       if (Math.random() < 0.5) {
         const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.14, h * 0.2, 6), new THREE.MeshStandardMaterial({ color: 0x11141a, roughness: 0.6, metalness: 0.6 }));
-        spire.position.y = h + h2 + h * 0.1;
+        spire.position.y = top + h * 0.1;
         g.add(spire);
       }
       // crown light band
       if (Math.random() < 0.6) {
         const crown = new THREE.Mesh(
-          new THREE.BoxGeometry(w2 + 0.15, 0.28, w2 + 0.15),
+          new THREE.BoxGeometry(w * k + 0.15, 0.28, d * k + 0.15),
           new THREE.MeshBasicMaterial({ color: Math.random() < 0.6 ? 0xd8b070 : 0x7fa8d8, toneMapped: false, transparent: true, opacity: 0.85 })
         );
-        crown.position.y = h + h2;
+        crown.position.y = top;
         g.add(crown);
       }
+    } else {
+      // a flat-topped tower still gets a parapet, or it ends like a cut card
+      const par = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.4, 0.5, d + 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.8, metalness: 0.2 })
+      );
+      par.position.y = h + 0.1;
+      g.add(par);
     }
     // rooftop aviation beacon
     if (Math.random() < 0.6) {
       const b = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._softDot(), color: 0xff3b30, transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
       b.scale.setScalar(1.1);
-      b.position.y = h + (g.children.length > 1 ? h * 0.28 : 0.6);
+      b.position.y = top + 0.7;
       g.add(b);
       beaconArr.push(b);
     }
+    g.userData.footprint = Math.max(w, d) + 4;
     return g;
   }
 
@@ -495,10 +688,12 @@ export class ShowroomDrive {
     for (let i = 0; i < 46; i++) {
       const a = -Math.PI * 0.9 + Math.random() * Math.PI * 0.95;
       const r = 40 + Math.random() * 42;
-      const h = 8 + Math.random() * 44;
-      const w = 2.6 + Math.random() * 5.0;
-      const t = this._makeTower(w, h, i % 4, this.beacons, this.pavTowerMats);
+      const h = 14 + Math.random() * 50;
+      const w = 5 + Math.random() * 8;
+      // only the front rank pays for a modelled base; behind it, silhouette
+      const t = this._makeTower(w, h, i % 5, this.beacons, this.pavTowerMats, { podium: r < 58 });
       t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r - 8);
+      t.rotation.y = Math.random() * Math.PI;
       city.add(t);
     }
 
@@ -571,7 +766,7 @@ export class ShowroomDrive {
     this.nightEnv = this._nightEnvTex();
     const roadRough = this._roadRoughTex();
     const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(19, 520),
+      new THREE.PlaneGeometry(19, 940),
       new THREE.MeshStandardMaterial({
         color: 0x04060a, map: this.roadTex,
         roughness: 0.44, roughnessMap: roadRough, metalness: 0.78,
@@ -583,22 +778,68 @@ export class ShowroomDrive {
     road.receiveShadow = true;
     this.ride.add(road);
 
-    // pavements — damp, not flooded
+    /*
+     * ---- the land the city stands on ----
+     *
+     * The boulevard used to be the ONLY ground in the world: past the kerb
+     * there was nothing, so every tower's base ended in mid-air over the fog
+     * and the skyline appeared to float above the road. The city block on the
+     * right and the far bank across the water are what the buildings stand on.
+     */
+    const landMat = new THREE.MeshStandardMaterial({
+      color: 0x05070c, roughness: 0.8, metalness: 0.24,
+      envMap: this.nightEnv, envMapIntensity: 0.2,
+    });
+    const rightLand = new THREE.Mesh(new THREE.PlaneGeometry(440, 940), landMat);
+    rightLand.rotation.x = -Math.PI / 2;
+    rightLand.position.set(13.2 + 220, 0.0, -220);
+    this.ride.add(rightLand);
+
+    const farLand = new THREE.Mesh(new THREE.PlaneGeometry(320, 940), landMat);
+    farLand.rotation.x = -Math.PI / 2;
+    farLand.position.set(-76 - 160, 0.0, -220);
+    this.ride.add(farLand);
+
+    // Pavements — damp, not flooded, and matte enough to stay dark. Slab
+    // joints and grime matter more than the shade: an untextured plane reads
+    // as a strip of paper laid beside the road no matter how dark it is.
     const walkMat = new THREE.MeshStandardMaterial({
-      color: 0x080a10, roughness: 0.6, metalness: 0.5,
-      envMap: this.nightEnv, envMapIntensity: 0.6,
+      color: 0x05060a, map: this._walkTex(), roughness: 0.9, metalness: 0.06,
+      envMap: this.nightEnv, envMapIntensity: 0.1,
     });
     for (const [x, w] of [[-11.4, 4], [11.4, 4]]) {
-      const walk = new THREE.Mesh(new THREE.PlaneGeometry(w, 520), walkMat);
+      const walk = new THREE.Mesh(new THREE.PlaneGeometry(w, 940), walkMat);
       walk.rotation.x = -Math.PI / 2;
       walk.position.set(x, 0.06, -220);
       this.ride.add(walk);
     }
 
+    // kerbs — the lip between carriageway and pavement, and the one place a
+    // street lamp's light actually catches an edge
+    const kerbMat = new THREE.MeshStandardMaterial({ color: 0x171a20, roughness: 0.78, metalness: 0.2 });
+    for (const x of [-9.5, 9.5]) {
+      const kerb = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 940), kerbMat);
+      kerb.position.set(x, 0.05, -220);
+      this.ride.add(kerb);
+    }
+
+    // the quay wall: the boulevard's left edge drops to the water
+    const quayMat = new THREE.MeshStandardMaterial({ color: 0x05070c, roughness: 0.94, metalness: 0.05 });
+    const quay = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.0, 940), quayMat);
+    quay.position.set(-14.3, -0.92, -220);      // top lands just above the kerb
+    this.ride.add(quay);
+
+    // and the far bank rises out of it again under the skyline. It sits close
+    // enough (~65 m) that its lit windows survive the fog — a skyline you
+    // cannot see across the water is just a black cut-out.
+    const bank = new THREE.Mesh(new THREE.BoxGeometry(4, 2.2, 940), quayMat);
+    bank.position.set(-77.5, -0.9, -220);
+    this.ride.add(bank);
+
     // guardrail along the waterfront (left side)
     const railMat = new THREE.MeshStandardMaterial({ color: 0x1a1e26, roughness: 0.45, metalness: 0.8 });
     for (const y of [0.42, 0.78]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 520), railMat);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 940), railMat);
       rail.position.set(-13.6, y, -220);
       this.ride.add(rail);
     }
@@ -611,12 +852,17 @@ export class ShowroomDrive {
     });
 
     // ---- the water beyond, carrying smeared city light ----
+    // Near-black and near-mirror: at night a river is only what it reflects.
+    // The old grey sheen read as a lit floor stretching to the horizon.
     const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(90, 520),
-      new THREE.MeshStandardMaterial({ color: 0x030609, roughness: 0.35, metalness: 0.35, envMapIntensity: 0.14 })
+      new THREE.PlaneGeometry(64, 940),
+      new THREE.MeshStandardMaterial({
+        color: 0x01030a, roughness: 0.3, metalness: 0.92,
+        envMap: this.nightEnv, envMapIntensity: 0.28,
+      })
     );
     water.rotation.x = -Math.PI / 2;
-    water.position.set(-59, -0.35, -220);
+    water.position.set(-46, -0.35, -220);
     this.ride.add(water);
 
     this.waterStreaks = [];
@@ -630,22 +876,36 @@ export class ShowroomDrive {
         })
       );
       s.rotation.x = -Math.PI / 2;
-      s.position.set(-16 - Math.random() * 46, -0.32, -Math.random() * 440);
+      s.position.set(-17 - Math.random() * 55, -0.32, -Math.random() * 440);
       s.userData.ph = Math.random() * Math.PI * 2;
       this.ride.add(s);
       this.waterStreaks.push(s);
     }
 
-    // ---- far skyline backdrop across the water ----
+    // ---- far skyline backdrop, standing on the far bank ----
+    // Every one of these sits beyond x = -106, i.e. on land, never out on the
+    // water where a tower has nothing to stand on.
     this.farCity = new THREE.Group();
-    for (let i = 0; i < 40; i++) {
-      const h = 10 + Math.random() * 46;
-      const w = 4 + Math.random() * 9;
-      const t = this._makeTower(w, h, i % 4, (this.farBeacons = this.farBeacons || []), this.rideTowerMats);
-      t.position.set(-70 - Math.random() * 55, 0, -40 - i * 11 - Math.random() * 8);
+    for (let i = 0; i < 34; i++) {
+      const h = 14 + Math.random() * 52;
+      const w = 7 + Math.random() * 12;
+      const t = this._makeTower(w, h, i % 5, (this.farBeacons = this.farBeacons || []), this.rideTowerMats);
+      t.position.set(-82 - Math.random() * 62, 0, -40 - i * 11 - Math.random() * 8);
+      t.rotation.y = Math.random() * Math.PI;
       this.farCity.add(t);
     }
     this.ride.add(this.farCity);
+
+    // a rank of low waterfront blocks along the bank, so the skyline has a
+    // foot rather than a row of shafts standing straight out of the river
+    for (let i = 0; i < 16; i++) {
+      const h = 5 + Math.random() * 9;
+      const w = 12 + Math.random() * 16;
+      const b = this._makeTower(w, h, i % 5, [], this.rideTowerMats);
+      b.position.set(-78 - Math.random() * 9, 0, -30 - i * 27 - Math.random() * 14);
+      b.rotation.y = Math.random() * Math.PI;
+      this.farCity.add(b);
+    }
 
     // ---- the destination: a hazy skyline burning on the horizon ----
     // FogExp2 erases anything past ~150m, so the horizon lives on a
@@ -683,15 +943,79 @@ export class ShowroomDrive {
     this.headlightWet.visible = false;   // only while headlights are on
     this.ride.add(this.headlightWet);
 
-    // ---- near towers flanking the right side + some left beyond water start ----
+    // ---- near towers flanking the right side ----
+    // These are the ones seen from the driver's seat, so they carry podiums
+    // and lit lobbies: the base of a building is all you see at 40 mph.
     this.rideTowers = [];
-    this._ridePool(this.rideTowers, 30, (i) => {
-      const h = 18 + Math.random() * 55;
-      const w = 6 + Math.random() * 9;
-      const t = this._makeTower(w, h, i % 4, (this.farBeacons = this.farBeacons || []), this.rideTowerMats);
-      t.position.set(17 + Math.random() * 34, 0, 0);
+    this._ridePool(this.rideTowers, 26, (i) => {
+      const h = 22 + Math.random() * 55;
+      const w = 8 + Math.random() * 11;
+      const t = this._makeTower(w, h, i % 5, (this.farBeacons = this.farBeacons || []), this.rideTowerMats, { podium: true });
+      t.position.set(22 + Math.random() * 30, 0, 0);
+      t.rotation.y = (Math.random() - 0.5) * 0.5;
       t.userData.side = 1;
       return t;
+    });
+
+    /*
+     * ---- the street wall ----
+     *
+     * Between the kerb and the towers there was a gap of bare ground, which
+     * is the other half of why the skyline looked detached: a real boulevard
+     * is walled by low-rise right at the pavement, and the towers stand
+     * BEHIND it. These blocks hold the street edge and put lit shopfronts at
+     * eye level, where the wet road can catch them.
+     */
+    this.rideBlocks = [];
+    this._ridePool(this.rideBlocks, 24, (i) => {
+      const g = new THREE.Group();
+      const h = 6 + Math.random() * 12;
+      const w = 7 + Math.random() * 9;
+      const d = 9 + Math.random() * 8;
+      const tex = this._facadeTex(i % 5);
+      const body = new THREE.Mesh(
+        this._facadeGeo(w, h, d, tex, Math.random()),
+        new THREE.MeshStandardMaterial({
+          color: 0x080a0f, roughness: 0.78, metalness: 0.14, envMapIntensity: 0.16,
+          emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4 + Math.random() * 0.3,
+        })
+      );
+      body.position.y = h / 2;
+      // the shopfront: glazed units along the pavement, some shut for the night
+      const shopTex = this._shopTex();
+      const shop = new THREE.Mesh(
+        this._bandGeo(w + 0.1, 3.0, d + 0.1, 14),
+        new THREE.MeshStandardMaterial({
+          color: 0x08090d, roughness: 0.42, metalness: 0.14,
+          emissive: 0xffffff, emissiveMap: shopTex,
+          emissiveIntensity: 0.8 + Math.random() * 0.45,
+        })
+      );
+      shop.position.y = 1.5;
+      // a parapet cap so the roofline is a line, not a raw box edge
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.5, 0.4, d + 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x101319, roughness: 0.82, metalness: 0.18 })
+      );
+      cap.position.y = h + 0.08;
+      // the shopfronts' light lying on the wet pavement in front of them —
+      // anchored to the units above it, so it can never read as a stray band
+      const spill = new THREE.Mesh(
+        new THREE.PlaneGeometry(d, 5.5),
+        new THREE.MeshBasicMaterial({
+          map: this._streakTex(), transparent: true, depthWrite: false,
+          blending: THREE.AdditiveBlending, color: 0xe8b073, opacity: 0.2,
+        })
+      );
+      spill.rotation.x = -Math.PI / 2;
+      spill.rotation.z = -Math.PI / 2;               // brightest at the glass,
+                                                     // fading out toward the kerb
+      spill.position.set(-w / 2 - 2.4, 0.09, 0);
+      g.add(body, shop, cap, spill);
+      g.position.set(14.6 + Math.random() * 3.5 + w / 2, 0, 0);
+      g.rotation.y = (Math.random() - 0.5) * 0.16;
+      g.userData.side = 1;
+      return g;
     });
 
     // ---- street lamps: paired, warm pools, wet-road streak under each ----
@@ -861,7 +1185,9 @@ export class ShowroomDrive {
 
   _seedRide() {
     let ri = -470;
-    for (const t of this.rideTowers) { t.position.z = ri; ri += 16 + Math.random() * 9; }
+    for (const t of this.rideTowers) { t.position.z = ri; ri += 21 + Math.random() * 11; }
+    let bi = -470;
+    for (const b of this.rideBlocks) { b.position.z = bi; bi += 13 + Math.random() * 7; }
     let ll = -470, rl = -470 - 21;
     for (const g of this.rideLamps) {
       if (g.userData.side < 0) { g.position.z = ll; ll += 42; }
@@ -889,7 +1215,7 @@ export class ShowroomDrive {
     for (let y = 0; y < 512; y += 64) g.fillRect(32, y, 3.4, 30);
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(1, 48);
+    t.repeat.set(1, 87);       // one tile ≈ 10.8 m along a 940 m carriageway
     t.anisotropy = 8;
     return t;
   }
@@ -1120,9 +1446,11 @@ export class ShowroomDrive {
       g.fillRect(x - r, y - r, r * 2, r * 2);
     }
 
-    // the moon, high on one side
+    // The moon, high on one side. Kept faint: a horizontal surface seen at a
+    // grazing angle mirrors this one blob across its whole area, which is how
+    // a damp pavement ends up brighter than the buildings lighting it.
     const mg = g.createRadialGradient(W * 0.2, H * 0.16, 0, W * 0.2, H * 0.16, 60);
-    mg.addColorStop(0, "rgba(224,230,244,0.5)");
+    mg.addColorStop(0, "rgba(224,230,244,0.26)");
     mg.addColorStop(1, "rgba(224,230,244,0)");
     g.fillStyle = mg;
     g.fillRect(0, 0, W * 0.45, H * 0.4);
@@ -1134,6 +1462,50 @@ export class ShowroomDrive {
     const t = new THREE.CanvasTexture(cv);
     t.mapping = THREE.EquirectangularReflectionMapping;
     t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  /* Paving slabs: joints, a kerb-side gutter stain, and worn patches. */
+  _walkTex() {
+    if (this._walkT) return this._walkT;
+    const S = 256, SLAB = 64;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = S;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#9aa0ac";                       // mid grey; the material tints it
+    g.fillRect(0, 0, S, S);
+
+    // slab faces, each very slightly its own shade
+    for (let y = 0; y < S; y += SLAB) {
+      for (let x = 0; x < S; x += SLAB) {
+        const v = 138 + Math.random() * 40;
+        g.fillStyle = `rgb(${v},${v + 3},${v + 9})`;
+        g.fillRect(x + 1.5, y + 1.5, SLAB - 3, SLAB - 3);
+      }
+    }
+    // the joints between them
+    g.strokeStyle = "rgba(20,24,32,0.85)";
+    g.lineWidth = 2;
+    for (let i = 0; i <= S; i += SLAB) {
+      g.beginPath(); g.moveTo(i, 0); g.lineTo(i, S); g.stroke();
+      g.beginPath(); g.moveTo(0, i); g.lineTo(S, i); g.stroke();
+    }
+    // grime: darker where feet and water collect
+    for (let i = 0; i < 70; i++) {
+      const x = Math.random() * S, y = Math.random() * S, r = 8 + Math.random() * 30;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(28,32,40,${0.12 + Math.random() * 0.22})`);
+      gr.addColorStop(1, "rgba(28,32,40,0)");
+      g.fillStyle = gr;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 470);                          // one slab ≈ 0.5 m
+    t.anisotropy = 8;
+    t.colorSpace = THREE.SRGBColorSpace;
+    this._walkT = t;
     return t;
   }
 
@@ -1172,7 +1544,7 @@ export class ShowroomDrive {
     }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(1, 40);
+    t.repeat.set(1, 72);
     return t;
   }
 
@@ -1886,7 +2258,8 @@ export class ShowroomDrive {
         o.position.z = far - gap;
       }
     };
-    for (const tw of this.rideTowers) recycle(tw, this.rideTowers, 16 + Math.random() * 6);
+    for (const tw of this.rideTowers) recycle(tw, this.rideTowers, 21 + Math.random() * 8);
+    for (const bl of this.rideBlocks) recycle(bl, this.rideBlocks, 13 + Math.random() * 6);
     for (const p of this.railPosts) recycle(p, this.railPosts, 16);
     for (const p of this.puddles) recycle(p, this.puddles, 26 + Math.random() * 34);
 
