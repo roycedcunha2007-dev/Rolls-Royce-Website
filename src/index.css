@@ -185,17 +185,8 @@ button {
   border-radius: 999px;
 }
 
-.model-nav button:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.model-nav .current {
-  color: #07090e !important;
-  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%) !important;
-  font-weight: 700;
-  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.3);
-}
+/* the selected-model styling lives with the switchgear further down; this
+   older pair fought it for the same declarations */
 
 .header-actions {
   display: flex;
@@ -1459,111 +1450,269 @@ footer {
   animation: rrRipple .62s var(--ease) forwards;
 }
 
-/* ===================== INSTRUMENT CLUSTER ===================== */
+/* =====================================================================
+ * MATERIALS
+ *
+ * Four surfaces do all the work in here, and every control is assembled
+ * from them rather than from flat fills: milled aluminium, a turned bezel,
+ * hand-stitched hide, and glass. Keeping them as tokens is what stops the
+ * cluster, the switchgear and the rail looking like three different cars.
+ * ===================================================================== */
+:root {
+  --steel-dk: #2b2f36;
+  --steel-md: #767d87;
+  --steel-lt: #dfe5ec;
+
+  /* a turned ring: the highlight has to travel AROUND it, so conic */
+  --bezel: conic-gradient(from 214deg,
+      #4e535a 0deg, #c8cfd8 26deg, #6f757e 62deg, #eef3f8 104deg,
+      #656b73 146deg, #b9c1ca 190deg, #52575e 232deg, #d6dde5 292deg,
+      #5a5f66 330deg, #4e535a 360deg);
+  /* fine knurling milled into a grip */
+  --knurl: repeating-conic-gradient(from 0deg,
+      #191c21 0deg .55deg, #3f444c .55deg 1.1deg);
+  /* brushed billet, grain running across the part */
+  --billet:
+      repeating-linear-gradient(90deg,
+        rgba(255,255,255,.05) 0 1px, rgba(0,0,0,.05) 1px 2px),
+      linear-gradient(180deg, #30343b, #1a1d22 52%, #24272d);
+  /* the hide the binnacle is trimmed in */
+  --hide:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23g)' opacity='.5'/%3E%3C/svg%3E"),
+      linear-gradient(168deg, #16181d, #0a0b0f 60%, #101217);
+
+  --engrave: 0 1px 0 rgba(255,255,255,.10), 0 -1px 0 rgba(0,0,0,.9);
+  --milled-edge:
+      inset 0 1px 0 rgba(255,255,255,.16),
+      inset 0 -1px 0 rgba(0,0,0,.75),
+      inset 1px 0 0 rgba(255,255,255,.05),
+      inset -1px 0 0 rgba(0,0,0,.5);
+}
+
+/* ===================== INSTRUMENT BINNACLE ===================== */
 .rr-cluster {
-  position: absolute; left: 40px; bottom: 40px; width: 296px;
-  padding: 22px 22px 18px;
-  border-radius: var(--r-lg);
-  background:
-    linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,0) 42%),
-    var(--pane);
-  border: 1px solid var(--hair);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(26px) saturate(1.15);
-  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  position: absolute; left: 40px; bottom: 40px; width: 300px;
+  padding: 20px 18px 16px;
+  border-radius: 26px 26px 20px 20px;
+  background: var(--hide);
+  background-blend-mode: overlay, normal;
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow:
+    0 30px 70px rgba(0,0,0,.72),
+    0 2px 0 rgba(255,255,255,.05) inset,
+    0 -18px 40px rgba(0,0,0,.5) inset;
   opacity: 0; animation: rrRise .8s var(--ease) forwards;
 }
-.rr-dial { position: relative; }
-.rr-dial svg { display: block; width: 100%; height: auto; }
-.rr-num { fill: rgba(255,255,255,.4); font: 400 10px var(--sans); letter-spacing: .06em; }
-.rr-monogram { fill: rgba(201,169,97,.5); font: 500 13px var(--serif); letter-spacing: .12em; }
-
-.rr-readout {
-  position: absolute; left: 0; right: 0; top: 52%; transform: translateY(-50%);
-  text-align: center; pointer-events: none;
-}
-.rr-readout b {
-  display: block; font-family: var(--serif); font-weight: 400;
-  font-size: 52px; line-height: .92; color: #fff;
-  letter-spacing: .01em; text-shadow: 0 2px 26px rgba(0,0,0,.7);
-  font-variant-numeric: tabular-nums;
-}
-.rr-readout span {
-  display: block; margin-top: 4px;
-  font: 400 8.5px var(--sans); letter-spacing: .34em; text-transform: uppercase; color: var(--txt-faint);
+/* the hood every real binnacle wears, throwing a shadow down the dial */
+.binnacle-hood {
+  position: absolute; left: 6px; right: 6px; top: -9px; height: 34px;
+  border-radius: 26px 26px 50% 50%;
+  background: linear-gradient(180deg, #23262c, #131519 55%, rgba(9,10,13,0));
+  box-shadow: 0 8px 18px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.14);
+  pointer-events: none;
 }
 
-.rr-stats {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
-  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair);
+/* ---- the gauge itself: knurl, bezel, face, crystal ---- */
+.gauge { position: relative; width: 100%; aspect-ratio: 1; border-radius: 50%; }
+.gauge > i { position: absolute; border-radius: 50%; pointer-events: none; }
+.gauge-knurl {
+  inset: 0; background: var(--knurl);
+  box-shadow: 0 12px 26px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.07);
 }
-.rr-stats div { text-align: center; }
-.rr-stats b {
-  display: block; font: 500 12.5px var(--sans); color: var(--txt);
+.gauge-bezel {
+  inset: 5px; background: var(--bezel);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.55),
+    inset 0 -2px 5px rgba(0,0,0,.6),
+    0 1px 4px rgba(0,0,0,.6);
+}
+.gauge-face {
+  position: absolute; inset: 15px; border-radius: 50%; overflow: hidden;
+  /* engine-turned guilloché, then the dial's own falloff */
+  background:
+    repeating-conic-gradient(from 0deg,
+      rgba(255,255,255,.035) 0deg .3deg, rgba(255,255,255,0) .3deg .85deg),
+    radial-gradient(circle at 50% 32%, #262a31, #0e1014 58%, #05060a 100%);
+  box-shadow:
+    inset 0 8px 24px rgba(0,0,0,.85),
+    inset 0 0 0 1px rgba(255,255,255,.06),
+    inset 0 -6px 14px rgba(0,0,0,.6);
+}
+.gauge-face svg { display: block; width: 100%; height: 100%; }
+/* the crystal: one sweep, one vignette, nothing else */
+.gauge-glass {
+  inset: 15px;
+  background:
+    radial-gradient(120% 86% at 26% 6%, rgba(255,255,255,.20), rgba(255,255,255,.05) 32%, transparent 56%),
+    radial-gradient(90% 90% at 50% 118%, rgba(150,180,220,.09), transparent 52%);
+  box-shadow: inset 0 0 26px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.05);
+}
+
+.g-num { fill: #e9e4d6; font: 400 17px var(--serif); letter-spacing: .02em; }
+.g-num.sm { font-size: 12px; }
+.g-legend {
+  fill: rgba(233,228,214,.44); font: 400 7px var(--sans);
+  letter-spacing: .3em;
+}
+.g-legend.sm { font-size: 6.4px; letter-spacing: .2em; fill: rgba(233,228,214,.6); }
+.g-pct { fill: rgba(201,169,97,.55); font: 400 8px var(--sans); letter-spacing: .1em; }
+.g-monogram { fill: rgba(201,169,97,.6); font: 500 8.5px var(--serif); letter-spacing: .34em; }
+
+/* ---- the lit digital window, sunk into the dial face ---- */
+.gauge-window {
+  position: absolute; left: 50%; bottom: 11.5%; transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: 5px;
+  padding: 5px 12px 4px; border-radius: 4px;
+  background: linear-gradient(180deg, #05070a, #0b0e13);
+  box-shadow:
+    inset 0 2px 5px rgba(0,0,0,.95),
+    inset 0 -1px 0 rgba(255,255,255,.07),
+    0 1px 0 rgba(255,255,255,.06);
+  pointer-events: none;
+}
+.gauge-window b {
+  font: 400 19px var(--mono); letter-spacing: .04em;
+  color: #ffd9a0; text-shadow: 0 0 10px rgba(255,190,110,.55);
+  font-variant-numeric: tabular-nums; white-space: pre;
+}
+.gauge-window span {
+  font: 400 6.5px var(--sans); letter-spacing: .24em; text-transform: uppercase;
+  color: rgba(255,200,140,.5);
+}
+/* the gear, sharing the window with the speed */
+.gauge-window u {
+  text-decoration: none;
+  font: 500 11px var(--mono); letter-spacing: .06em;
+  color: #ffd9a0; opacity: .8; text-shadow: 0 0 8px rgba(255,190,110,.45);
+  padding-right: 5px; margin-right: 1px;
+  border-right: 1px solid rgba(255,190,110,.22);
+}
+
+/* ---- the engraved data plate screwed below the dial ---- */
+.rr-plate {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 14px; padding: 9px 10px; border-radius: 7px;
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 2px 6px rgba(0,0,0,.6);
+}
+.rr-plate > div { text-align: center; flex: 1; }
+.rr-plate i { width: 1px; height: 20px; background: linear-gradient(180deg, transparent, rgba(0,0,0,.7), transparent); box-shadow: 1px 0 0 rgba(255,255,255,.05); }
+.rr-plate b {
+  display: block; white-space: nowrap; font: 500 11.5px var(--mono); color: #d8dde4;
   letter-spacing: .02em; font-variant-numeric: tabular-nums;
+  text-shadow: var(--engrave);
 }
-.rr-stats span {
+.rr-plate span {
   display: block; margin-top: 3px;
-  font: 400 7.5px var(--sans); letter-spacing: .24em; text-transform: uppercase; color: var(--txt-faint);
+  font: 400 6.2px var(--sans); letter-spacing: .26em; text-transform: uppercase;
+  color: rgba(255,255,255,.3); text-shadow: var(--engrave);
 }
 
-.rr-sub {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair);
-}
-.rr-sub p { margin: 0; font: 400 7.5px var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--txt-faint); }
-.rr-sub b { display: block; margin-bottom: 2px; font: 500 12px var(--sans); letter-spacing: 0; color: var(--txt); text-transform: none; font-variant-numeric: tabular-nums; }
-.rr-sub i { width: 1px; height: 20px; background: var(--hair); }
+/* ---- reserve dial + mechanical counters ---- */
+.rr-lower { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.rr-lower .gauge { width: 106px; flex: none; }
+.rr-lower .gauge-knurl { box-shadow: 0 8px 18px rgba(0,0,0,.65), inset 0 0 0 1px rgba(255,255,255,.07); }
+.rr-lower .gauge-bezel { inset: 4px; }
+.rr-lower .gauge-face, .rr-lower .gauge-glass { inset: 10px; }
 
-.rr-reserve { display: flex; align-items: center; gap: 9px; margin-top: 14px; }
-.rr-reserve span { font: 400 7.5px var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--txt-faint); white-space: nowrap; }
-.rr-reserve b { font: 500 10px var(--sans); color: var(--gold); font-variant-numeric: tabular-nums; }
-.rr-bar { flex: 1; height: 2px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; }
-.rr-bar i {
-  display: block; height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, rgba(201,169,97,.45), var(--gold));
-  transition: width .3s linear;
+.rr-counters { flex: 1; display: grid; gap: 7px; }
+.rr-roller { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.roller-label {
+  font: 400 6.4px var(--sans); letter-spacing: .26em; text-transform: uppercase;
+  color: rgba(255,255,255,.32); text-shadow: var(--engrave);
+}
+/* each drum curves away top and bottom; the tenths drum is reversed */
+.roller-drums {
+  display: flex; gap: 1px; padding: 2px; border-radius: 3px;
+  background: #05060a;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.06);
+}
+.roller-drums i {
+  display: grid; place-items: center; width: 13px; height: 18px; border-radius: 1px;
+  font: 400 11px var(--mono); font-style: normal; color: #e7e9ee;
+  background: linear-gradient(180deg, #14171c, #3a3f47 26%, #4a505a 50%, #2c3037 74%, #101318);
+  text-shadow: 0 1px 0 rgba(0,0,0,.8);
+}
+.roller-drums i.tenth {
+  color: #14171c;
+  background: linear-gradient(180deg, #8d8579, #ded6c4 28%, #f2ece0 50%, #cbc3b2 74%, #7e766a);
+  text-shadow: 0 1px 0 rgba(255,255,255,.4);
 }
 
-/* ===================== CONTROL RAIL ===================== */
+/* ===================== CONTROL RAIL =====================
+ * A column of milled switches in a machined housing. Each carries a
+ * jewelled tell-tale that lights only when its function is live, which is
+ * how you read a real switch panel at a glance without labels. */
 .rr-rail {
   position: absolute; right: 40px; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 2px; padding: 10px 8px;
-  border-radius: var(--r-lg);
-  background: linear-gradient(200deg, rgba(255,255,255,.04), rgba(255,255,255,0) 46%), var(--pane);
-  border: 1px solid var(--hair);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(26px) saturate(1.15);
-  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 9px;
+  border-radius: 18px;
+  background: var(--hide);
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow:
+    0 26px 60px rgba(0,0,0,.65),
+    inset 0 1px 0 rgba(255,255,255,.09),
+    inset 0 -12px 26px rgba(0,0,0,.45);
 }
 .rail-item {
-  display: flex; align-items: center; gap: 13px;
-  width: 100%; padding: 11px 15px 11px 13px;
-  border-radius: var(--r-md);
-  font-size: 8.6px; letter-spacing: .22em; text-transform: uppercase; white-space: nowrap;
+  position: relative;
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 11px 14px 11px 11px;
+  border-radius: 8px;
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 2px 5px rgba(0,0,0,.55);
+  font-size: 8.4px; letter-spacing: .22em; text-transform: uppercase; white-space: nowrap;
+  color: rgba(255,255,255,.62); text-shadow: var(--engrave);
   opacity: 0; animation: rrSlideL .7s var(--ease) forwards;
 }
-.rail-item svg { flex: none; opacity: .72; transition: opacity var(--fast), transform var(--fast); }
-.rail-item:hover { background: rgba(255,255,255,.05); }
-.rail-item:hover svg { opacity: 1; transform: translateX(-1px); }
-.rail-item.live { color: var(--gold); }
+.rail-item svg { flex: none; opacity: .62; transition: opacity var(--fast); }
+/* the jewel: dark glass until its circuit is live */
+.rail-lamp {
+  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+  width: 5px; height: 5px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3c4149, #14171b 70%);
+  box-shadow: inset 0 0 2px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.08);
+  transition: background var(--fast), box-shadow var(--fast);
+}
+/* a hairline of light along the top edge — the switch's chamfer */
+.rail-edge {
+  position: absolute; left: 10px; right: 10px; top: 1px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+}
+.rail-item:hover { color: rgba(255,255,255,.9); background: var(--billet), #2a2e35; }
+.rail-item:hover svg { opacity: .92; }
+.rail-item:active { box-shadow: inset 0 3px 7px rgba(0,0,0,.8); transform: translateY(1px) scale(1); }
+.rail-item.live { color: #f0dcae; }
 .rail-item.live svg { opacity: 1; }
+.rail-item.live .rail-lamp {
+  background: radial-gradient(circle at 35% 30%, #fff3d4, var(--gold) 55%, #7c6122 100%);
+  box-shadow: 0 0 8px rgba(201,169,97,.85), 0 0 2px rgba(255,240,200,.9), inset 0 0 2px rgba(255,255,255,.6);
+}
+/* held in: the key sits down in its aperture and the legend lights */
 .rail-item.open {
-  color: #12100a; background: linear-gradient(180deg, #d9bd7c, var(--gold));
-  box-shadow: 0 6px 20px rgba(201,169,97,.28);
+  color: #1a1509;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.3), rgba(255,255,255,0) 46%),
+    linear-gradient(180deg, #e0c489, var(--gold));
+  box-shadow:
+    inset 0 2px 5px rgba(255,255,255,.4),
+    inset 0 -2px 6px rgba(120,90,30,.55),
+    0 4px 14px rgba(201,169,97,.3);
+  text-shadow: 0 1px 0 rgba(255,255,255,.35);
 }
 .rail-item.open svg { opacity: 1; }
+.rail-item.open .rail-lamp { background: radial-gradient(circle at 35% 30%, #fffdf6, #fff0cd); box-shadow: 0 0 8px rgba(255,244,214,.9); }
 
 /* ---- flyout: opens beside the rail, never over the car's centre ---- */
 .rr-flyout {
-  position: absolute; right: 152px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: 156px; top: 50%; transform: translateY(-50%);
   width: 306px; max-height: min(74vh, 560px); overflow-y: auto; pointer-events: auto;
-  border-radius: var(--r-lg);
-  background: linear-gradient(170deg, rgba(255,255,255,.05), rgba(255,255,255,0) 40%), var(--pane-solid);
-  border: 1px solid var(--hair);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(30px) saturate(1.2);
-  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  border-radius: 16px;
+  background: var(--hide);
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow:
+    0 30px 70px rgba(0,0,0,.72),
+    inset 0 1px 0 rgba(255,255,255,.1);
   animation: rrFlyIn .42s var(--ease) both;
   scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent;
 }
@@ -1571,7 +1720,9 @@ footer {
 .rr-flyout::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 3px; }
 .rr-flyout header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 17px 18px 13px; border-bottom: 1px solid var(--hair);
+  padding: 14px 16px 12px; margin: 7px 7px 0; border-radius: 10px;
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 2px 6px rgba(0,0,0,.5);
 }
 .rr-flyout header p { margin: 0; font-family: var(--serif); font-size: 17px; font-weight: 400; letter-spacing: .05em; color: var(--txt); }
 .fly-close {
@@ -1586,20 +1737,28 @@ footer {
 .fly-body > *:first-child .fly-label:first-child,
 .fly-body > .fly-label:first-child { margin-top: 2px; }
 .fly-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* every cell is a milled key in its own right */
 .fly-cell {
   display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  padding: 11px 12px; border-radius: var(--r-sm); text-align: left;
-  background: rgba(255,255,255,.035); border: 1px solid transparent;
+  padding: 11px 12px; border-radius: 7px; text-align: left;
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 2px 4px rgba(0,0,0,.45);
+  transition: box-shadow var(--fast), color var(--fast), transform .12s var(--ease);
 }
 .fly-cell.tight { padding: 10px 12px; }
-.fly-cell span { font-size: 10.5px; letter-spacing: .03em; color: var(--txt); transition: color var(--fast); }
+.fly-cell span { font-size: 10.5px; letter-spacing: .03em; color: var(--txt); text-shadow: var(--engrave); transition: color var(--fast); }
 .fly-cell em {
   font-style: normal; font-size: 7.5px; letter-spacing: .2em;
   text-transform: uppercase; color: var(--txt-faint); transition: color var(--fast);
 }
-.fly-cell:hover { background: rgba(255,255,255,.07); border-color: var(--hair-strong); }
-.fly-cell.on { background: var(--gold-soft); border-color: var(--gold-line); }
-.fly-cell.on span, .fly-cell.on em { color: var(--gold); }
+.fly-cell:hover span { color: #fff; }
+.fly-cell:active { transform: translateY(1px); box-shadow: inset 0 3px 7px rgba(0,0,0,.8); }
+.fly-cell.on {
+  background: linear-gradient(180deg, rgba(0,0,0,.3), rgba(0,0,0,0) 40%), linear-gradient(180deg, #23262c, #191c21);
+  box-shadow: inset 0 3px 8px rgba(0,0,0,.85), inset 0 -1px 0 rgba(255,255,255,.08), 0 0 12px rgba(201,169,97,.12);
+}
+.fly-cell.on span { color: #f4e3ba; text-shadow: 0 0 9px rgba(201,169,97,.5); }
+.fly-cell.on em { color: var(--gold); }
 .fly-cell.wide { grid-column: 1 / -1; }
 .fly-cell.halt { margin-top: 4px; }
 .fly-note { margin: 14px 0 0; font-size: 10px; line-height: 1.65; color: var(--txt-faint); letter-spacing: .015em; }
@@ -1613,43 +1772,98 @@ footer {
 }
 .fly-keys dd { margin: 0; font-size: 10px; letter-spacing: .04em; color: var(--txt-dim); }
 
-/* ===================== DRIVING MODES ===================== */
+/* ===================== DRIVING MODES =====================
+ * Switchgear milled from one billet: each key stands proud in its own
+ * aperture and DEPRESSES when chosen, its engraved legend lighting from
+ * behind. A pill that merely changes colour is a web control; this is the
+ * console. */
 .rr-modes {
   position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%);
-  display: flex; gap: 2px; padding: 6px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 55%), var(--pane);
-  border: 1px solid var(--hair);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(26px) saturate(1.15);
-  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  display: flex; gap: 5px; padding: 7px;
+  border-radius: 13px;
+  background: var(--hide);
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow:
+    0 24px 54px rgba(0,0,0,.66),
+    inset 0 1px 0 rgba(255,255,255,.1),
+    inset 0 -10px 22px rgba(0,0,0,.45);
   opacity: 0; animation: rrRiseCx .8s var(--ease) forwards;
 }
-.rr-modes button {
-  padding: 12px 22px; border-radius: 999px;
-  font-size: 8.6px; letter-spacing: .24em; text-transform: uppercase; white-space: nowrap;
+.mode-key {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 18px 9px; border-radius: 7px;
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 3px 6px rgba(0,0,0,.55);
+  color: rgba(255,255,255,.6); text-shadow: var(--engrave);
+  transition: box-shadow var(--fast), color var(--fast), transform .12s var(--ease);
 }
-.rr-modes button:hover { background: rgba(255,255,255,.05); }
-.rr-modes button.on {
-  color: #12100a; background: linear-gradient(180deg, #dcc084, var(--gold));
-  box-shadow: 0 6px 22px rgba(201,169,97,.3), inset 0 1px 0 rgba(255,255,255,.35);
+.mode-key span {
+  font-size: 8.2px; letter-spacing: .24em; text-transform: uppercase; white-space: nowrap;
+}
+/* the tell-tale above the legend */
+.key-lamp {
+  width: 16px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #23262b, transparent);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.9);
+  transition: background var(--fast), box-shadow var(--fast);
+}
+.mode-key:hover { color: rgba(255,255,255,.92); }
+.mode-key:active { transform: translateY(1px); }
+.mode-key.on {
+  color: #f4e3ba;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0) 40%),
+    linear-gradient(180deg, #23262c, #191c21);
+  /* pressed home: light falls into the aperture, not out of it */
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,.85),
+    inset 0 -1px 0 rgba(255,255,255,.09),
+    0 0 16px rgba(201,169,97,.14);
+  text-shadow: 0 0 10px rgba(201,169,97,.55), 0 -1px 0 rgba(0,0,0,.8);
+  transform: translateY(1px);
+}
+.mode-key.on .key-lamp {
+  background: linear-gradient(90deg, rgba(201,169,97,0), #ffe6b0, rgba(201,169,97,0));
+  box-shadow: 0 0 9px rgba(201,169,97,.9);
 }
 
-/* ===================== QUICK ACTIONS ===================== */
+/* ===================== QUICK ACTIONS =====================
+ * Knurled rotary bezels with a polished cap. */
 .rr-quick {
-  position: absolute; right: 40px; bottom: 46px; display: flex; gap: 9px;
+  position: absolute; right: 40px; bottom: 46px; display: flex; gap: 11px;
   opacity: 0; animation: rrRise .8s var(--ease) forwards;
 }
-.rr-quick button {
-  display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 60%), var(--pane);
-  border: 1px solid var(--hair);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+.knob {
+  position: relative; display: grid; place-items: center;
+  width: 50px; height: 50px; border-radius: 50%;
+  /* the grip is coarser than the gauge knurl — at 50px a fine cut reads as noise */
+  background: repeating-conic-gradient(from 0deg, #16191e 0deg 1.6deg, #454b54 1.6deg 3.2deg);
+  box-shadow: 0 10px 22px rgba(0,0,0,.65), inset 0 0 0 1px rgba(255,255,255,.08);
+  color: rgba(255,255,255,.68);
+  transition: transform var(--fast), color var(--fast);
 }
-.rr-quick button:hover { border-color: var(--hair-strong); transform: translateY(-2px); }
-.rr-quick button.on { color: var(--gold); border-color: var(--gold-line); background: var(--gold-soft); }
+.knob > i { position: absolute; border-radius: 50%; pointer-events: none; }
+.knob-bezel {
+  inset: 5px; background: var(--bezel);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.5), inset 0 -2px 4px rgba(0,0,0,.6);
+}
+.knob-cap {
+  inset: 9px;
+  background:
+    radial-gradient(110% 90% at 30% 14%, rgba(255,255,255,.2), transparent 52%),
+    linear-gradient(180deg, #2b2f36, #13161b);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,.8);
+}
+.knob svg { position: relative; z-index: 1; }
+.knob:hover { transform: translateY(-2px); color: rgba(255,255,255,.96); }
+.knob:active { transform: translateY(0) scale(.97); }
+.knob.on { color: #ffe6b0; }
+.knob.on .knob-cap {
+  background:
+    radial-gradient(110% 90% at 30% 14%, rgba(255,255,255,.24), transparent 52%),
+    linear-gradient(180deg, #4a3c1c, #241d0c);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.8), 0 0 14px rgba(201,169,97,.35);
+}
 
 /* ===================== STATUS ===================== */
 .rr-flag {
@@ -1754,25 +1968,38 @@ footer {
   font-weight: 400; color: var(--txt-faint);
 }
 
-/* model pill — same glass as the ride docks */
+/* model selector — the same switchgear as the driving modes, so the whole
+   interface reads as one machined console rather than two design languages */
 .model-nav {
-  gap: 2px; padding: 6px;
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 55%), var(--pane);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(26px) saturate(1.15);
-  -webkit-backdrop-filter: blur(26px) saturate(1.15);
+  gap: 4px; padding: 6px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.09);
+  background: var(--hide);
+  box-shadow:
+    0 22px 48px rgba(0,0,0,.6),
+    inset 0 1px 0 rgba(255,255,255,.1),
+    inset 0 -9px 20px rgba(0,0,0,.45);
 }
 .model-nav button {
-  padding: 11px 21px; font-size: 8.6px; font-weight: 400;
-  letter-spacing: .24em; color: var(--txt-dim);
-  transition: color var(--fast), background var(--fast), box-shadow var(--fast);
+  padding: 11px 20px; border-radius: 7px;
+  font-size: 8.4px; font-weight: 400; letter-spacing: .24em;
+  color: rgba(255,255,255,.58); text-shadow: var(--engrave);
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 2px 5px rgba(0,0,0,.5);
+  transition: color var(--fast), box-shadow var(--fast), transform .12s var(--ease);
 }
-.model-nav button:hover { color: var(--txt); background: rgba(255,255,255,.05); }
+.model-nav button:hover { color: rgba(255,255,255,.92); }
+.model-nav button:active { transform: translateY(1px); }
 .model-nav .current {
-  color: #12100a !important;
-  background: linear-gradient(180deg, #dcc084, var(--gold)) !important;
-  box-shadow: 0 6px 22px rgba(201,169,97,.3), inset 0 1px 0 rgba(255,255,255,.35);
+  color: #f4e3ba !important;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.32), rgba(0,0,0,0) 40%),
+    linear-gradient(180deg, #23262c, #191c21) !important;
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,.85),
+    inset 0 -1px 0 rgba(255,255,255,.09),
+    0 0 16px rgba(201,169,97,.14);
+  text-shadow: 0 0 10px rgba(201,169,97,.55), 0 -1px 0 rgba(0,0,0,.8);
+  transform: translateY(1px);
 }
 .model-nav button:disabled { opacity: .4; cursor: default; }
 
@@ -1781,37 +2008,43 @@ footer {
 .header-actions .text-button,
 .header-actions .drive-button {
   display: inline-flex; align-items: center; gap: 10px;
-  padding: 13px 24px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 55%), var(--pane);
-  box-shadow: var(--lift), var(--edge);
-  backdrop-filter: blur(26px) saturate(1.15);
-  -webkit-backdrop-filter: blur(26px) saturate(1.15);
-  color: var(--txt-dim);
+  padding: 13px 24px; border-radius: 9px; cursor: pointer;
+  border: 0;
+  background: var(--billet);
+  box-shadow: var(--milled-edge), 0 6px 16px rgba(0,0,0,.5);
+  color: rgba(255,255,255,.6); text-shadow: var(--engrave);
   font-family: var(--sans); font-size: 8.6px; font-weight: 400;
   letter-spacing: .24em; text-transform: uppercase; white-space: nowrap;
-  transition: color var(--fast), border-color var(--fast), transform var(--fast), box-shadow var(--fast);
+  transition: color var(--fast), transform .12s var(--ease), box-shadow var(--fast);
 }
 .header-actions .text-button:hover,
-.header-actions .drive-button:hover {
-  color: var(--txt); border-color: var(--hair-strong); transform: translateY(-1px);
-}
+.header-actions .drive-button:hover { color: rgba(255,255,255,.95); }
+.header-actions .text-button:active,
+.header-actions .drive-button:active { transform: translateY(1px); box-shadow: inset 0 3px 7px rgba(0,0,0,.8); }
+/* the engine is running: the key is held in and backlit */
 .header-actions .drive-button.live {
-  color: var(--gold); border-color: var(--gold-line); background: var(--gold-soft);
+  color: #f4e3ba;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.32), rgba(0,0,0,0) 40%),
+    linear-gradient(180deg, #23262c, #191c21);
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,.85),
+    inset 0 -1px 0 rgba(255,255,255,.09),
+    0 0 18px rgba(201,169,97,.16);
+  text-shadow: 0 0 10px rgba(201,169,97,.55), 0 -1px 0 rgba(0,0,0,.8);
 }
 .header-actions .arrow { font-size: 10px; opacity: .6; }
 
 /* ---- cluster must not dominate a short viewport ---- */
-@media (max-height: 820px) {
-  .rr-cluster { width: 248px; padding: 16px 16px 13px; bottom: 30px; }
-  .rr-dial svg { max-width: 178px; margin: 0 auto; }
-  .rr-readout b { font-size: 40px; }
-  .rr-stats { margin-top: 10px; padding-top: 10px; }
-  .rr-sub { margin-top: 9px; padding-top: 9px; }
-  .rr-reserve { margin-top: 10px; }
+@media (max-height: 860px) {
+  .rr-cluster { width: 252px; padding: 16px 14px 13px; bottom: 30px; }
+  .rr-plate { margin-top: 11px; padding: 7px 8px; }
+  .rr-plate b { font-size: 10.5px; }
+  .rr-lower { margin-top: 10px; gap: 10px; }
+  .rr-lower .gauge { width: 88px; }
 }
-@media (max-height: 700px) {
-  .rr-cluster { width: 214px; }
-  .rr-readout b { font-size: 34px; }
-  .rr-sub { display: none; }
+@media (max-height: 740px) {
+  .rr-cluster { width: 224px; }
+  .rr-lower .gauge { width: 76px; }
+  .roller-drums i { width: 11px; height: 15px; font-size: 9.5px; }
 }

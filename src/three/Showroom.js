@@ -129,8 +129,51 @@ export class Showroom {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     
-    // Luxury Bloom (subtle glow on highlights)
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(c.clientWidth, c.clientHeight), 0.14, 0.4, 0.88);
+    /*
+     * Bloom.
+     *
+     * At 0.12 strength this was doing nothing an observer could name — the
+     * street lamps were hot dots with a hard edge, which is the single most
+     * reliable tell of a real-time render. A photographed practical always
+     * spreads: some of it in the lens, most of it in the air between the
+     * lamp and the camera.
+     *
+     * The threshold matters more than the strength. Held high, only genuine
+     * light SOURCES pass it — lamp heads, headlamps, tail lamps, the hotter
+     * office windows — so the bloom lands where light is being emitted and
+     * never on a merely pale surface. Held low, every lit facade smears and
+     * the frame goes milky, which is the other way this effect ruins a
+     * night scene. Wide radius, because the glow has to be soft enough that
+     * you read it as air rather than as a filter.
+     */
+    /* THRESHOLD, in linear HDR, is the whole design of this pass. At 0.85 it
+     * was catching lit SURFACES — most of all the road markings, which are
+     * retroreflective white and therefore the brightest diffuse thing in
+     * frame — and smearing each one into a wide soft wedge. That milky
+     * bloom lying over the carriageway was reading as "the road is made of
+     * fog", and no amount of grading could remove it because it was being
+     * added before the grade ran. Above 1.0 nothing diffuse can reach it:
+     * only actual emitters, whose emissive is deliberately authored past
+     * white, get through.
+     *
+     * RADIUS is then kept TIGHT. A wide radius spreads what does get
+     * through across a quarter of the frame, and the street lamps already
+     * carry their own layered haloes as sprites — geometry that fogs and
+     * occludes correctly, which a screen-space blur cannot. Bloom's job
+     * here is only the last few pixels of glare around an emitter.
+     *
+     * STRENGTH ends up very low, and that is deliberate. UnrealBloomPass
+     * composites five mip levels, so the largest of them puts a share of
+     * every bright pixel across the whole frame no matter how tight the
+     * radius — at any strength that made the street lamps sing, the
+     * carriageway came back veiled in a grey haze that no grade could
+     * remove, because it had been added upstream of the grade. The glow
+     * around the lamps is carried instead by their own layered halo
+     * sprites, which are real objects in the world: they fog with
+     * distance, they are occluded by the buildings they pass behind, and
+     * they cannot bleed onto a road forty metres in front of them. Bloom's
+     * remaining job is the last few pixels of lens bleed. */
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(c.clientWidth, c.clientHeight), 0.14, 1.55, 0.30);
     this.composer.addPass(this.bloom);
 
     this.composer.addPass(new OutputPass());
@@ -150,6 +193,15 @@ export class Showroom {
     this.floor = new ShowroomFloor(this.scene);
     this.props = new ShowroomProps(this.scene);
     this.drive = new ShowroomDrive(this.scene);
+    /*
+     * The boulevard's own IBL, prefiltered. Built here rather than in the
+     * asset loader because every material in the ride is created in the
+     * ShowroomDrive constructor and has to be re-pointed at the encoded
+     * texture before the first frame.
+     */
+    this.pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.pmrem.compileEquirectangularShader();
+    this.drive.buildEnvIBL(this.pmrem);
 
     this._buildDust();
     this._buildHologram();
@@ -251,12 +303,13 @@ export class Showroom {
     };
     manager.onError = (url) => console.error("[rr] loading error:", url);
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    pmrem.compileEquirectangularShader();
-    this.pmrem = pmrem;
+    const pmrem = this.pmrem;
 
     new RGBELoader(manager).load("/env/studio.hdr", (hdr) => {
-      this.scene.environment = pmrem.fromEquirectangular(hdr).texture;
+      this.studioEnv = pmrem.fromEquirectangular(hdr).texture;
+      // a car that finishes loading while we are already on the road must
+      // not have the gallery dropped back over the top of the night
+      if (!this.driveMode) this.scene.environment = this.studioEnv;
       hdr.dispose();
     });
 
@@ -294,6 +347,12 @@ export class Showroom {
         this.scene.add(entry.group);
         entry.loaded = true;
         this._applyCustomization(entry);
+        // the night drive's traffic borrows this geometry rather than
+        // pretending to be a car with extruded boxes
+        this.drive?.setBodyDonors(this.cars);
+        // a car that finishes loading AFTER we are already on the road still
+        // has to be given the city to reflect
+        if (this.driveMode) this._setCarEnvironment(true);
         resolve(entry);
       });
     });
@@ -609,19 +668,119 @@ export class Showroom {
     });
   }
 
+  /*
+   * Rolls-Royce paint.
+   *
+   * The old material was metalness 0.88 with a clearcoat on top, which is
+   * two different lies at once. Automotive paint is a metallic BASECOAT —
+   * aluminium flake suspended in tinted binder — under a thick, perfectly
+   * smooth clear lacquer, and the reason coachbuilt paint looks the way it
+   * does is that those two layers reflect DIFFERENTLY: the flake gives a
+   * soft, broad, colour-tinted sheen and the lacquer gives a hard, sharp,
+   * white specular sitting on top of it. Collapse them into one layer, as
+   * near-metal with a token clearcoat, and you get the flat plastic
+   * shoulder this car had.
+   *
+   *   metalness 0.72  the flake, not a solid billet of chrome
+   *   roughness 0.26  broad enough that the flake scatters rather than
+   *                   mirroring — this is where the DEPTH comes from
+   *   clearcoat 1.0 / clearcoatRoughness 0.055
+   *                   the lacquer. Measured automotive clear coat sits
+   *                   around 0.03–0.06, and going below that is not "more
+   *                   glossy", it is a delta function: a directional light
+   *                   on a 0.02 clear coat produces a specular a couple of
+   *                   pixels across with an HDR value in the hundreds,
+   *                   which tone mapping renders as an unremarkable white
+   *                   dot and bloom then expands into a soft disc floating
+   *                   on the roof. Held at 0.055 the same highlight has a
+   *                   shape, and the skyline still comes back sharp over
+   *                   the soft basecoat beneath
+   *   ior 1.52        real automotive lacquer, which sets the Fresnel — and
+   *                   Fresnel is the entire reason a dark car reads as
+   *                   glossy at the shoulder and deep at the door
+   *   sheen           the faint bloom off flake at grazing angles that
+   *                   makes black paint look expensive rather than merely
+   *                   dark
+   */
   _paintMat() {
     return new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(this.paintHex),
-      metalness: 0.88,
-      roughness: 0.3,
+      metalness: 0.72,
+      roughness: 0.26,
       clearcoat: 1.0,
-      clearcoatRoughness: 0.05,
+      clearcoatRoughness: 0.055,
+      ior: 1.52,
+      specularIntensity: 1.0,
+      sheen: 0.16,
+      sheenRoughness: 0.5,
+      sheenColor: new THREE.Color(0x8ea6c8),
       envMapIntensity: 1.0,
     });
   }
 
   _chromeMat() {
     return new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.06, envMapIntensity: 1.5 });
+  }
+
+  /*
+   * What the paint reflects.
+   *
+   * In the atelier the scene environment is a studio HDR, which is exactly
+   * right under gallery lights and exactly wrong on the boulevard, where a
+   * coachbuilt flank should be carrying the towers it is driving past. On
+   * the road every painted, chromed and glazed surface takes the drive's
+   * own night environment as its PERSONAL envMap, so the skyline slides
+   * down the shoulder line as the car moves, and clearcoat goes up: gloss
+   * this deep is most of what separates a motor car from a rendered box.
+   *
+   * Per material rather than on the scene, because the scene environment
+   * also lights the road, the towers and the traffic — pushing it high
+   * enough to gloss the car would flatten every one of them.
+   */
+  _setCarEnvironment(driving) {
+    const env = driving ? this.drive?.nightEnv : null;
+    if (driving && !env) return;
+    for (const key of Object.keys(this.cars)) {
+      const e = this.cars[key];
+      if (!e || !e.loaded) continue;
+      const tune = (mats, envInt, onGloss) => {
+        for (const m of mats || []) {
+          if (!m) continue;
+          // remember the atelier's own values once, so coming back off the
+          // road restores what the paint actually was rather than a guess
+          if (m.userData.studio == null) {
+            m.userData.studio = {
+              envMapIntensity: m.envMapIntensity ?? 1,
+              roughness: m.roughness,
+              clearcoatRoughness: m.clearcoatRoughness,
+            };
+          }
+          const st = m.userData.studio;
+          m.envMap = env;
+          m.envMapIntensity = driving ? envInt : st.envMapIntensity;
+          if (onGloss) {
+            m.roughness = driving ? onGloss.roughness : st.roughness;
+            if (m.clearcoatRoughness !== undefined) {
+              m.clearcoatRoughness = driving ? onGloss.clearcoatRoughness : st.clearcoatRoughness;
+            }
+          }
+          m.needsUpdate = true;
+        }
+      };
+      /*
+       * On the road the coachwork's whole job is to CARRY the city, so the
+       * environment is pushed hard and the basecoat tightened — but not to
+       * a mirror. A flank at roughness 0.15 returns the skyline as a clean
+       * copy of itself, which reads as chrome; held around 0.20 the flake
+       * still scatters it and the reflection gains the softness that says
+       * lacquer over metal. The clear coat is what stays sharp.
+       */
+      tune(e.paintMats, 2.15, { roughness: 0.19, clearcoatRoughness: 0.045 });
+      tune(e.secondaryMats, 1.7);
+      tune(e.chromeMats, 1.9);
+      tune(e.glassMats, 2.1);
+      tune(e.caliperMats, 1.1);
+    }
   }
 
   _stripBackdrops(entry) {
@@ -1007,7 +1166,13 @@ export class Showroom {
         // black. A real camera opens up for that shot; so does this one.
         // The ease is slow enough to read as an iris adjusting.
         const onboard = this.drive.onboardCams?.has(this.drive.rideCam);
-        const expTarget = onboard ? 2.15 : 1.02;
+        /* The seated cameras still open up, but by far less than they used
+         * to. They needed nearly a stop and a half when the world's
+         * environment was a studio HDR turned down to 0.16 and contributing
+         * almost nothing; against a correctly prefiltered night environment
+         * at full strength the cabin is properly lit already, and the old
+         * figure simply washed the hides and the veneer to paper. */
+        const expTarget = onboard ? 1.95 : 1.52;
         this.renderer.toneMappingExposure += (expTarget - this.renderer.toneMappingExposure) * 0.035;
         // a windscreen is not a lens — pull the vignette back when seated
         const vigTarget = (onboard ? 0.5 : 1) * (this.drive.modeVig ?? 0.32);
@@ -1076,6 +1241,8 @@ export class Showroom {
       }
 
       this.dust.rotation.y = t * 0.012;
+      // the boulevard's mirror, from wherever the camera finally settled
+      if (this.driveMode) this.drive.renderReflection(this.renderer, this.scene, this.camera);
       this.composer.render();
     };
     animate();
@@ -1230,8 +1397,9 @@ export class Showroom {
 
   startRide() {
     this.drive?.startRide();
-    // the studio HDR must fall away at speed — the city becomes the light
-    gsap.to(this.scene, { environmentIntensity: 0.16, duration: 1.6, ease: "power2.inOut" });
+    // the environment IS the night city now, so it runs at full strength —
+    // it is the scene's ambient, not a leftover from the gallery
+    gsap.to(this.scene, { environmentIntensity: 1.0, duration: 1.6, ease: "power2.inOut" });
   }
   stopRide() {
     this.drive?.stopRide();
@@ -1252,7 +1420,7 @@ export class Showroom {
     if (!m) return;
     if (this.scene.fog) gsap.to(this.scene.fog, { density: m.fog, duration: 1.2, ease: "power2.inOut" });
     gsap.to(this.bloom, { strength: m.bloom, duration: 1.2 });
-    gsap.to(this.scene, { environmentIntensity: id === "night" ? 0.07 : 0.16, duration: 1.2 });
+    gsap.to(this.scene, { environmentIntensity: id === "night" ? 0.55 : 1.0, duration: 1.2 });
     this.grade.applyMode(m, gsap);
   }
 
@@ -1281,10 +1449,24 @@ export class Showroom {
     if (this.cabin?.strips) this.cabin.strips.visible = !on;
     if (this.dust) this.dust.visible = !on;
 
-    // a deep, hazy night settles over the pavilion for atmospheric depth
-    const bg = on ? 0x060b12 : 0x87979d;
-    const fog = on ? 0x0a1622 : 0x3e403c;
-    const fogD = on ? 0.011 : 0.0055;
+    /*
+     * Aerial perspective.
+     *
+     * The night fog was 0x0a1017 — all but black — so distance did not
+     * make things HAZY, it made them dark, and a tower a hundred metres off
+     * was simply a dimmer version of a tower ten metres off. That is why
+     * the city had no depth: with nothing for the far planes to fade INTO,
+     * near and far read at the same distance.
+     *
+     * Real night air over a lit city is not black. It is full of the city's
+     * own light, scattered back at you, and it is measurably brighter than
+     * the buildings silhouetted against it. Matching the fog to the sky
+     * dome's horizon value is what separates the foreground from the
+     * skyline and gives the frame its layers.
+     */
+    const bg = on ? 0x070b13 : 0x87979d;
+    const fog = on ? 0x141c2b : 0x3e403c;
+    const fogD = on ? 0.0042 : 0.0055;
     if (this.scene.background) {
       gsap.to(this.scene.background, {
         r: ((bg >> 16) & 255) / 255, g: ((bg >> 8) & 255) / 255, b: (bg & 255) / 255,
@@ -1298,9 +1480,22 @@ export class Showroom {
       });
       gsap.to(this.scene.fog, { density: fogD, duration: 0.9, ease: "power2.inOut" });
     }
-    // a moodier, night environment exposure
-    gsap.to(this.scene, { environmentIntensity: on ? 0.5 : 0.7, duration: 0.9 });
-    gsap.to(this.bloom, { strength: on ? 0.26 : 0.14, duration: 0.9 });
+    /*
+     * And swap the world's environment wholesale.
+     *
+     * The gallery HDR was still the scene environment on the boulevard,
+     * merely turned down — so every kerb, palm, railing and traffic car
+     * that does not carry its own envMap was being lit by a photograph of
+     * a daylit studio, at night, in the rain. Dimming a wrong environment
+     * does not make it right; it makes it a dim wrong environment, and it
+     * is a large part of why the night read as grey rather than as dark.
+     */
+    if (on && this.drive.nightEnv) this.scene.environment = this.drive.nightEnv;
+    else if (!on && this.studioEnv) this.scene.environment = this.studioEnv;
+    gsap.to(this.scene, { environmentIntensity: on ? 1.0 : 0.7, duration: 0.9 });
+
+    this._setCarEnvironment(on);
+    gsap.to(this.bloom, { strength: on ? 0.13 : 0.12, duration: 0.9 });
 
     if (on) {
       this.setDoors(false);
@@ -1349,6 +1544,8 @@ export class Showroom {
         }
       }
     });
+    this.pmrem?.dispose();
+    this.drive?.reflection?.dispose();
     this.pmrem?.dispose();
     this.composer?.dispose();
     this.renderer.dispose();
