@@ -1036,7 +1036,11 @@ export class ShowroomDrive {
     const h = 6.2 + Math.random() * 3.4;
     const trunk = new THREE.Mesh(
       new THREE.CylinderGeometry(0.13, 0.24, h, 7, 4),
-      new THREE.MeshStandardMaterial({ color: 0x3a3128, roughness: 0.92, metalness: 0.03 })
+      new THREE.MeshStandardMaterial({
+        color: 0x413729, roughness: 0.86, metalness: 0.08,
+        envMap: this._env(), envMapIntensity: 0.4,
+        emissive: 0x140f0a, emissiveIntensity: 0.5,
+      })
     );
     trunk.position.y = h / 2;
     // palms lean, and a row of identical verticals reads as fence posts
@@ -1059,8 +1063,11 @@ export class ShowroomDrive {
     const crown = new THREE.Mesh(
       mergeGeometries(frondGeos, false),
       new THREE.MeshStandardMaterial({
-        map: this._frondTex(), color: 0x8fa06a, transparent: true, alphaTest: 0.35,
-        roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide,
+        map: this._frondTex(), color: 0x93a473, transparent: true, alphaTest: 0.35,
+        roughness: 0.78, metalness: 0.06, side: THREE.DoubleSide,
+        envMap: this._env(), envMapIntensity: 0.5,
+        /* a floor, so a frond never resolves to pure black against the sky */
+        emissive: 0x1b2414, emissiveIntensity: 0.55,
       })
     );
     for (const fg of frondGeos) fg.dispose();
@@ -3857,6 +3864,11 @@ export class ShowroomDrive {
     // Cameras mounted on the car — free-look reads as turning your head;
     // the rest are cinematic placements where it reads as a gimbal.
     this.onboardCams = new Set(["bonnet", "bumper", "driver", "passenger", "interior", "rear", "spirit"]);
+    /* Of those, the ones the occupant is actually SEATED in. These are
+     * the shots that must show the commissioned cabin rather than the
+     * exterior model's built-in one — bonnet, bumper and spirit look at
+     * the car from outside it and keep the exterior. */
+    this.seatedCams = new Set(["driver", "passenger", "interior", "rear"]);
   }
 
   getViewTarget() {

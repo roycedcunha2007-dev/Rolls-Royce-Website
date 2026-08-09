@@ -67,6 +67,7 @@ export default function CabinHUD({ showroomApi, onExit }) {
   const [engine, setEngine] = useState(false);
   const [rain, setRain] = useState(false);
   const [privacy, setPrivacy] = useState(false);
+  const [welcome, setWelcome] = useState(false);
   const [seat, setSeat] = useState(null);
   const [sound, setSound] = useState(true);
 
@@ -193,7 +194,12 @@ export default function CabinHUD({ showroomApi, onExit }) {
           {privacy ? "Privacy glass" : "Clear glass"}
         </button>
         <button onClick={() => { cabin()?.indicate(4); }}>Indicators</button>
-        <button onClick={() => { cabin()?.flashLamps(); }}>Welcome lights</button>
+        <button
+          className={welcome ? "is-live" : ""}
+          onClick={() => { const w = !welcome; setWelcome(w); cabin()?.setWelcome(w); }}
+        >
+          {welcome ? "Lamps on" : "Welcome lights"}
+        </button>
         <button onClick={() => { cabin()?.shower(); say("A meteor shower, across your own sky."); }}>Shooting stars</button>
       </div>
 

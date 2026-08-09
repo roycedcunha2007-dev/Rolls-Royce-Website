@@ -311,11 +311,160 @@ export class CabinExperience {
     }, 420);
   }
 
+  /*
+   * The welcome lights.
+   *
+   * Two things were wrong. They TIMED OUT after 1.4 s — the sequence was
+   * written as a flash, so the moment you had finished looking at it the
+   * car switched itself off again; it is now a state you hold. And an
+   * emissive material on its own is a flat white bar: a real lamp has a
+   * halo around the lens, throws a pool onto the ground in front of it,
+   * and lights the bodywork it is mounted in. All three are built here.
+   */
+  _buildLampFx() {
+    if (this._lampFx) return this._lampFx;
+    const R = this.entry.regions || {};
+    if (!(R.lampMeshes || []).length) return null;
+
+    /*
+     * Everything here is sized from the CAR, never from the lamp meshes.
+     *
+     * The lamps in this model are not separate objects — several units
+     * share one mesh, so that mesh's bounding box spans the entire front of
+     * the car. Scaling a halo from it produced white blobs metres across
+     * that swallowed the whole vehicle. Fixed dimensions derived from the
+     * car's own size cannot fail that way whatever the model's structure,
+     * and every value below is clamped besides.
+     */
+    const g = new THREE.Group();
+    const halos = [], pools = [], spots = [];
+    const tex = this._glowTex();
+
+    // the car's long axis is its length; the other horizontal axis is width
+    const alongX = this.size.x >= this.size.z;
+    const fwd = new THREE.Vector3(alongX ? 1 : 0, 0, alongX ? 0 : 1);
+    const side = new THREE.Vector3(alongX ? 0 : 1, 0, alongX ? 1 : 0);
+    const halfLen = (alongX ? this.size.x : this.size.z) * 0.5;
+    const halfWide = (alongX ? this.size.z : this.size.x) * 0.5;
+
+    // which end the lamps sit at — only the SIGN is taken from the meshes
+    const lb = new THREE.Box3();
+    for (const m of R.lampMeshes) lb.expandByObject(m);
+    const lc = lb.getCenter(new THREE.Vector3());
+    const ahead = (alongX ? lc.x - this.center.x : lc.z - this.center.z) >= 0 ? 1 : -1;
+    fwd.multiplyScalar(ahead);
+
+    // headlamps sit a little under half the body height, inboard of the corners
+    const lampY = this.box.min.y + this.size.y * 0.42;
+    const nose = new THREE.Vector3().copy(this.center).addScaledVector(fwd, halfLen * 0.96);
+    nose.y = lampY;
+
+    const HALO_W = 0.46, HALO_H = 0.2;          // metres, and deliberately fixed
+    for (const sgn of [-1, 1]) {
+      const at = new THREE.Vector3().copy(nose).addScaledVector(side, sgn * halfWide * 0.62);
+
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, color: 0xdfeaff, transparent: true, opacity: 0,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+      halo.scale.set(HALO_W, HALO_H, 1);
+      halo.position.copy(at).addScaledVector(fwd, 0.05);
+      g.add(halo);
+      halos.push(halo);
+
+      // the pool it lays on the floor, well ahead of the nose
+      const pool = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.5, 3.4),
+        new THREE.MeshBasicMaterial({
+          map: tex, color: 0xcfe0ff, transparent: true, opacity: 0,
+          depthWrite: false, blending: THREE.AdditiveBlending,
+        })
+      );
+      pool.rotation.x = -Math.PI / 2;
+      if (!alongX) pool.rotation.z = Math.PI / 2;
+      pool.position.copy(at).addScaledVector(fwd, 2.0);
+      pool.position.y = this.box.min.y + 0.006;
+      g.add(pool);
+      pools.push(pool);
+
+      // a modest real light, so the beam falls on the floor rather than
+      // being painted onto it
+      const sp = new THREE.SpotLight(0xe8f0ff, 0, 7.5, Math.PI / 7, 0.9, 1.6);
+      sp.position.copy(at);
+      const tgt = new THREE.Object3D();
+      tgt.position.copy(at).addScaledVector(fwd, 3.6);
+      tgt.position.y = this.box.min.y;
+      sp.target = tgt;
+      g.add(sp, tgt);
+      spots.push(sp);
+    }
+
+    this.showroom.scene.add(g);
+    this._lampFx = { group: g, halos, pools, spots };
+    return this._lampFx;
+  }
+
+  _glowTex() {
+    if (this._glowT) return this._glowT;
+    const S = 128;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = S;
+    const c = cv.getContext("2d");
+    const gr = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    gr.addColorStop(0, "rgba(255,255,255,0.9)");
+    gr.addColorStop(0.18, "rgba(230,240,255,0.42)");
+    gr.addColorStop(0.5, "rgba(200,220,255,0.12)");
+    gr.addColorStop(1, "rgba(180,205,255,0)");
+    c.fillStyle = gr;
+    c.fillRect(0, 0, S, S);
+    this._glowT = new THREE.CanvasTexture(cv);
+    return this._glowT;
+  }
+
+  /* Hold the lamps on. Front sweeps up first, tail follows — the order a
+     Rolls-Royce actually greets you in. */
+  setWelcome(on) {
+    this.welcomeOn = on;
+    const R = this.entry.regions || {};
+    const fx = this._buildLampFx();
+    const idle = this.engineOn ? 1.1 : 0.12;
+
+    for (const m of R.lamps || []) {
+      gsap.killTweensOf(m);
+      gsap.to(m, { emissiveIntensity: on ? 1.45 : idle, duration: on ? 0.75 : 0.9, ease: on ? "power3.out" : "power2.inOut" });
+    }
+    for (const m of R.lampsRear || []) {
+      gsap.killTweensOf(m);
+      gsap.to(m, {
+        emissiveIntensity: on ? 1.0 : (this.engineOn ? 0.9 : 0.1),
+        duration: on ? 0.7 : 0.9, delay: on ? 0.22 : 0, ease: "power2.out",
+      });
+    }
+    if (fx) {
+      for (const h of fx.halos) {
+        gsap.killTweensOf(h.material);
+        gsap.to(h.material, { opacity: on ? 0.38 : 0, duration: on ? 0.8 : 0.7, ease: "power2.out" });
+      }
+      for (const p of fx.pools) {
+        gsap.killTweensOf(p.material);
+        gsap.to(p.material, { opacity: on ? 0.16 : 0, duration: on ? 1.1 : 0.7, delay: on ? 0.18 : 0, ease: "power2.out" });
+      }
+      for (const s of fx.spots) {
+        gsap.killTweensOf(s);
+        gsap.to(s, { intensity: on ? 2.6 : 0, duration: on ? 0.9 : 0.7, delay: on ? 0.12 : 0, ease: "power2.out" });
+      }
+    }
+    this.sfx.click();
+    return on;
+  }
+
+  /* tapping the lamp jewellery itself still gives a courtesy flash */
   flashLamps() {
+    if (this.welcomeOn) return;              // already held on — leave it alone
     const mats = this.entry.regions?.lamps || [];
     for (const m of mats) {
       gsap.killTweensOf(m);
-      gsap.to(m, { emissiveIntensity: 1.6, duration: 0.5, ease: "power2.out" });
+      gsap.to(m, { emissiveIntensity: 1.35, duration: 0.4, ease: "power2.out" });
       gsap.to(m, { emissiveIntensity: this.engineOn ? 1.1 : 0.12, duration: 1.1, delay: 1.4, ease: "power2.inOut" });
     }
     this.sfx.click();
@@ -325,8 +474,14 @@ export class CabinExperience {
   engineStart(on) {
     this.engineOn = on;
     const R = this.entry.regions || {};
-    for (const m of R.lamps || []) {
-      gsap.to(m, { emissiveIntensity: on ? 1.1 : 0.12, duration: 0.9, ease: "power2.inOut" });
+    // starting the engine must not stamp on lamps the user is holding on
+    if (!this.welcomeOn) {
+      for (const m of R.lamps || []) {
+        gsap.to(m, { emissiveIntensity: on ? 1.1 : 0.12, duration: 0.9, ease: "power2.inOut" });
+      }
+      for (const m of R.lampsRear || []) {
+        gsap.to(m, { emissiveIntensity: on ? 0.9 : 0.1, duration: 0.9, ease: "power2.inOut" });
+      }
     }
     if (on) {
       // the fascia breathes awake — strips flare then settle
@@ -990,6 +1145,15 @@ export class CabinExperience {
       this.showroom.scene.remove(this.stars);
       this.stars.geometry.dispose();
       this.starMat.dispose();
+    }
+    if (this._lampFx) {
+      this.showroom.scene.remove(this._lampFx.group);
+      this._lampFx.group.traverse((o) => {
+        if (o.material) o.material.dispose();
+        if (o.geometry) o.geometry.dispose();
+      });
+      this._glowT?.dispose();
+      this._lampFx = null;
     }
     if (this.strips) this.showroom.scene.remove(this.strips);
     this.showroom.scene.remove(this.key, this.glow);

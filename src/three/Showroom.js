@@ -21,6 +21,21 @@ import { CabinExperience } from "./showroom/CabinExperience.js";
 gsap.registerPlugin(ScrollTrigger);
 
 const SANCTUARY_POS = new THREE.Vector3(0, 0, -20);
+const _IDENTITY_Q = new THREE.Quaternion();
+
+/*
+ * Two bloom settings, because the two acts are lit nothing alike.
+ *
+ *   atelier  a bright gallery: only genuine speculars may bloom, and
+ *            tightly, or the white walls bloom into each other
+ *   drive    a dark city: the practicals are the only bright things in
+ *            frame, so a low threshold and a wide spread are safe and are
+ *            most of what makes the night look photographed
+ */
+const BLOOM = {
+  atelier: { strength: 0.14, radius: 0.4, threshold: 0.88 },
+  drive: { strength: 0.14, radius: 1.55, threshold: 0.3 },
+};
 
 // Camera shots — one cinematic composition per scroll beat.
 const SHOTS = [
@@ -173,7 +188,22 @@ export class Showroom {
      * distance, they are occluded by the buildings they pass behind, and
      * they cannot bleed onto a road forty metres in front of them. Bloom's
      * remaining job is the last few pixels of lens bleed. */
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(c.clientWidth, c.clientHeight), 0.14, 1.55, 0.30);
+    /*
+     * Bloom belongs to the MODE, not to the application.
+     *
+     * The night drive wants a low threshold and a wide radius: almost
+     * everything in frame is dark, so only the practicals cross the line
+     * and their glow is allowed to spread. Run those same numbers over the
+     * atelier — a white-walled gallery under studio lighting — and the
+     * entire image is above threshold, so the whole frame blooms into
+     * itself and the room goes milky. Two separate settings, switched in
+     * setDrive; the atelier keeps the tight, selective bloom it was
+     * designed around.
+     */
+    this.bloom = new UnrealBloomPass(
+      new THREE.Vector2(c.clientWidth, c.clientHeight),
+      BLOOM.atelier.strength, BLOOM.atelier.radius, BLOOM.atelier.threshold
+    );
     this.composer.addPass(this.bloom);
 
     this.composer.addPass(new OutputPass());
@@ -339,6 +369,7 @@ export class Showroom {
         if (this.disposed) return;
         this._dress(key, gltf.scene, entry);
         const staged = this._stage(gltf.scene, def.length);
+        entry.model = staged;
         entry.group.add(staged);
         this._stripBackdrops(entry);
         this._clusterWheels(entry);
@@ -380,9 +411,22 @@ export class Showroom {
       };
       this._dressInterior(gltf.scene, entry);
       const staged = this._stage(gltf.scene, 5.55);
+      entry.model = staged;
       entry.group.add(staged);
+      /*
+       * This model ships with a studio backdrop — the large ground plane it
+       * was photographed on. Harmless while the cabin only ever appeared in
+       * the Sanctuary, but now that it stands in for the car on the
+       * boulevard that backdrop travels with it and wraps the camera in a
+       * pale sheet lit by every street lamp we pass, which is the orange
+       * wash filling the driver's view. The exterior models have always
+       * been stripped of theirs; this one never was.
+       */
+      this._stripBackdrops(entry);
       entry.group.position.copy(SANCTUARY_POS);
       entry.group.rotation.y = 0;
+      // where it lives when it is not standing in for the car on the road
+      entry.home = { pos: SANCTUARY_POS.clone(), quat: entry.group.quaternion.clone() };
       this.scene.add(entry.group);
       this.interiorCar = entry;
       this.cabin = new CabinExperience(this, entry);
@@ -562,7 +606,10 @@ export class Showroom {
     entry.regions = {
       seats: [], seatPerf: [], cabin: [], carpet: [], wood: [],
       headliner: [], belts: [], metalBright: [], metalMid: [],
-      signals: [], lamps: [],
+      signals: [], lamps: [], lampsRear: [],
+      /* the meshes as well as the materials: the welcome lights need to
+         know WHERE each lamp is to hang a halo on it and throw a pool */
+      lampMeshes: [], rearMeshes: [],
     };
     const R = entry.regions;
 
@@ -639,10 +686,21 @@ export class Showroom {
         const mat = mk({ color: 0x76500f, roughness: 0.4, metalness: 0.2, emissive: new THREE.Color(0xff9a1e), emissiveIntensity: 0 });
         obj.material = mat;
         R.signals.push(mat);
-      } else if (node.includes("lightsdfs") || node.includes("shader_rear") || name.includes("vehiclelights")) {
-        const mat = mk({ color: 0x2a2c30, roughness: 0.25, metalness: 0.4, emissive: new THREE.Color(0xfff2d8), emissiveIntensity: 0.12 });
+      } else if (node.includes("shader_rear")) {
+        /* the tail cluster is RED. It was sharing one white material with
+           the headlamps, so switching the lamps on lit the back of the car
+           the same colour as the front. */
+        const mat = mk({ color: 0x2a1416, roughness: 0.22, metalness: 0.35, emissive: new THREE.Color(0xff2e1c), emissiveIntensity: 0.1 });
+        obj.material = mat;
+        R.lampsRear.push(mat);
+        R.rearMeshes.push(obj);
+      } else if (node.includes("lightsdfs") || name.includes("vehiclelights")) {
+        /* LED headlamps are COOL white — a warm lamp reads as an old
+           tungsten unit, and the Ghost's are unmistakably daylight */
+        const mat = mk({ color: 0x24272c, roughness: 0.18, metalness: 0.45, emissive: new THREE.Color(0xeaf1ff), emissiveIntensity: 0.12 });
         obj.material = mat;
         R.lamps.push(mat);
+        R.lampMeshes.push(obj);
       } else if (node.includes("remap_body") || node.includes("exteriorost")) {
         // coachwork — the node name survives dedup, the material name doesn't
         const paint = this._paintMat();
@@ -737,6 +795,81 @@ export class Showroom {
    * also lights the road, the towers and the traffic — pushing it high
    * enough to gloss the car would flatten every one of them.
    */
+  /*
+   * The commissioned cabin, on the road.
+   *
+   * Two different models carry a Ghost here. The exterior GLB has a cabin
+   * modelled into it, but it is a coarse one and — crucially — it knows
+   * nothing about the commission: the hides, the veneer, the carpet and the
+   * belts are all dressed onto the SEPARATE interior model, which is the
+   * one the customer actually configures in the Atelier. Driving with a
+   * seated camera was therefore showing a generic dashboard rather than the
+   * car they had just specified.
+   *
+   * So the interior model stands in whenever the camera is inside the
+   * cabin: it is flown to the driving car's exact transform and swapped for
+   * the exterior body. Only the BODY is swapped, not the group — the
+   * headlights are mounted on the group and must keep lighting the road
+   * from the driver's seat.
+   */
+  /*
+   * The two models do NOT share a forward axis.
+   *
+   * _stage only aligns a model's LENGTH to X; which end is the nose depends
+   * on how the asset was authored. The exterior Ghost faces local +X. The
+   * interior model faces local −X — its driver viewpoint sits at 52% along
+   * the box and looks toward 16%, so the gaze runs down DECREASING x. Copy
+   * the exterior's rotation straight onto it and the cabin stands in 180°
+   * out, seating the occupant facing backwards.
+   *
+   * Rather than hard-code a half turn, the correction is read from the
+   * cabin's own driver viewpoint, so it stays right if the asset is ever
+   * replaced by one authored the other way round.
+   */
+  _cabinYawFix() {
+    if (this._cabinYaw) return this._cabinYaw;
+    const vp = this.cabin?.viewpoints?.driver;
+    if (!vp) return _IDENTITY_Q;              // not built yet — try again next frame
+    const f = new THREE.Vector3().subVectors(vp.look, vp.pos);
+    f.y = 0;
+    if (f.lengthSq() < 1e-6) return _IDENTITY_Q;
+    f.normalize();
+    // the yaw that maps +X onto this model's forward, inverted
+    const theta = Math.atan2(-f.z, f.x);
+    this._cabinYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -theta);
+    return this._cabinYaw;
+  }
+
+  _syncCommissionedCabin() {
+    const ic = this.interiorCar;
+    if (!ic || !ic.model) return;
+    const active = this.cars[this.activeKey];
+    if (!active || !active.loaded || !active.model) return;
+
+    const seated = !!this.drive.seatedCams?.has(this.drive.rideCam);
+    if (seated) {
+      // both models are staged the same way — centred, sitting on y = 0,
+      // nose down local +x — so copying the transform overlays them exactly
+      ic.group.position.copy(active.group.position);
+      // the car's orientation, then this model's own nose correction
+      ic.group.quaternion.copy(active.group.quaternion).multiply(this._cabinYawFix());
+      ic.group.scale.copy(active.group.scale);
+    } else if (this._cabinStandIn) {
+      // put it back in the Sanctuary the moment it is not needed
+      if (ic.home) {
+        ic.group.position.copy(ic.home.pos);
+        ic.group.quaternion.copy(ic.home.quat);
+      }
+      ic.group.scale.set(1, 1, 1);
+    }
+    /* Asserted every frame rather than on the transition: the customer can
+       change model while seated, and the incoming body must not appear
+       inside the cabin that is standing in for it. */
+    this._cabinStandIn = seated;
+    ic.group.visible = seated;
+    active.model.visible = !seated;
+  }
+
   _setCarEnvironment(driving) {
     const env = driving ? this.drive?.nightEnv : null;
     if (driving && !env) return;
@@ -1165,6 +1298,7 @@ export class Showroom {
         // the street lamps, so at the pavilion's exposure they render almost
         // black. A real camera opens up for that shot; so does this one.
         // The ease is slow enough to read as an iris adjusting.
+        this._syncCommissionedCabin();
         const onboard = this.drive.onboardCams?.has(this.drive.rideCam);
         /* The seated cameras still open up, but by far less than they used
          * to. They needed nearly a stop and a half when the world's
@@ -1444,7 +1578,24 @@ export class Showroom {
     if (this.props) this.props.setVisible(!on);
     if (this.floor) this.floor.setVisible?.(!on);
     if (this.lights) this.lights.setDriveMode(on);
-    if (this.interiorCar) this.interiorCar.group.visible = !on;
+    /* Leaving the road: the interior model goes home to the Sanctuary and
+       every exterior body is made visible again, in case we exited while a
+       seated camera had it standing in for one of them. */
+    if (this.interiorCar) {
+      const ic = this.interiorCar;
+      ic.group.visible = !on;
+      if (!on) {
+        if (ic.home) {
+          ic.group.position.copy(ic.home.pos);
+          ic.group.quaternion.copy(ic.home.quat);
+        }
+        ic.group.scale.set(1, 1, 1);
+      }
+      this._cabinStandIn = false;
+      for (const k of Object.keys(this.cars)) {
+        if (this.cars[k].model) this.cars[k].model.visible = true;
+      }
+    }
     if (this.starPoints) this.starPoints.visible = !on;
     if (this.cabin?.strips) this.cabin.strips.visible = !on;
     if (this.dust) this.dust.visible = !on;
@@ -1495,7 +1646,13 @@ export class Showroom {
     gsap.to(this.scene, { environmentIntensity: on ? 1.0 : 0.7, duration: 0.9 });
 
     this._setCarEnvironment(on);
-    gsap.to(this.bloom, { strength: on ? 0.13 : 0.12, duration: 0.9 });
+    // the night's wide, low-threshold bloom would turn the gallery milky —
+    // each act gets the bloom it was lit for
+    const bl = on ? BLOOM.drive : BLOOM.atelier;
+    gsap.to(this.bloom, {
+      strength: on ? 0.13 : bl.strength, radius: bl.radius, threshold: bl.threshold,
+      duration: 0.9, ease: "power2.inOut",
+    });
 
     if (on) {
       this.setDoors(false);
